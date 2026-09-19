@@ -1,133 +1,138 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import type { DealingMessage, StateMessage } from "../../shared/protocol.ts";
+import type { StateMessage } from "../../shared/protocol.ts";
+import { TABLE_SIZE } from "../../shared/types.ts";
 import { Card } from "./Card.tsx";
 import { ICON_MAP, ICON_COLORS } from "../lib/icons.ts";
+import { useLayoutTier } from "../hooks/useLayoutTier.ts";
+import { CARD_DIMS } from "../lib/layout.ts";
 
 interface DealAnimationProps {
-  dealing: DealingMessage;
   state: StateMessage;
 }
 
+/** Rounds dealt per player: 3 face-down, 3 face-up, 3 to the hand. */
+const ROUNDS = 3 * TABLE_SIZE;
+
 /**
- * Animates cards being dealt from a central deck out to each player in
- * round-robin order. The active user's cards are dealt face-up; everyone
- * else's are dealt face-down.
- *
- * The animation is purely visual -- the server has already dealt the hand.
- * After ~3s the server transitions to "playing" and the parent swaps us out.
+ * Animates the deal: three rounds of backs to everyone's table slots,
+ * three face-up cards revealed on top (they're public, so everyone sees
+ * the real cards), then three hand cards — yours face up, everyone
+ * else's face down. Purely visual: the server has already dealt and
+ * moves to the swapping phase ~3.5s later.
  */
-export function DealAnimation({ dealing, state }: DealAnimationProps) {
-  const [dealtCount, setDealtCount] = useState(0);
-  const numPlayers = dealing.playerOrder.length;
-  const totalCards = numPlayers * dealing.mode;
-  const dealIntervalMs = Math.max(2500 / totalCards, 50);
+export function DealAnimation({ state }: DealAnimationProps) {
+  const layout = useLayoutTier();
+  const players = state.players;
+  const n = players.length;
+  const selfIndex = players.findIndex((p) => p.playerId === state.you.playerId);
+  const total = n * ROUNDS;
+  const intervalMs = Math.max(2800 / total, 45);
 
+  const [dealt, setDealt] = useState(0);
   useEffect(() => {
-    if (dealtCount >= totalCards) return;
-    const t = setTimeout(() => setDealtCount((n) => n + 1), dealIntervalMs);
+    if (dealt >= total) return;
+    const t = setTimeout(() => setDealt((d) => d + 1), intervalMs);
     return () => clearTimeout(t);
-  }, [dealtCount, totalCards, dealIntervalMs]);
+  }, [dealt, total, intervalMs]);
 
-  const selfIndex = dealing.playerOrder.indexOf(state.you.playerId);
+  const oppSize = layout.oppCard;
+  const mySize = layout.myTableCard;
+  const others = n - 1;
 
-  // Pre-compute position per player slot as percentages
-  const positions = dealing.playerOrder.map((_, i) => {
-    if (i === selfIndex) {
-      // Self is at the bottom center
-      return { xPct: 50, yPct: 85 };
-    }
-    // Other players distributed across the top
-    const others = numPlayers - 1;
-    const otherIndex = i < selfIndex ? i : i - 1;
-    const xPct = others === 1 ? 50 : 20 + (60 * otherIndex) / (others - 1);
-    return { xPct, yPct: 15 };
+  // Percent positions: opponents across the top, you at the bottom.
+  const positions = players.map((_, i) => {
+    if (i === selfIndex) return { x: 50, y: layout.sideBySide ? 70 : 78 };
+    const k = i < selfIndex ? i : i - 1;
+    const x = others <= 1 ? 50 : 14 + (72 * k) / (others - 1);
+    return { x, y: 24 };
   });
 
   return (
-    <div className="flex flex-1 flex-col relative">
-      {/* Player labels at the top */}
-      <div className="flex justify-center gap-3 px-4 py-3">
-        {dealing.playerOrder.map((pid, i) => {
-          if (pid === state.you.playerId) return null;
-          const player = state.players.find((p) => p.playerId === pid);
-          if (!player) return null;
-          const Icon = ICON_MAP[player.icon];
-          const color = ICON_COLORS[i % ICON_COLORS.length];
-          return (
-            <div key={pid} className="flex flex-col items-center gap-1">
-              <div
-                className={`w-12 h-12 rounded-full flex items-center justify-center ${color}`}
-              >
-                <Icon className="w-6 h-6 text-white" />
-              </div>
-              <span className="text-xs text-slate-300">{player.name}</span>
+    <div className="flex flex-1 min-h-0 flex-col relative overflow-hidden" data-testid="deal-animation">
+      {/* Player labels */}
+      {players.map((p, i) => {
+        const Icon = ICON_MAP[p.icon];
+        const color = ICON_COLORS[i % ICON_COLORS.length];
+        const isSelf = i === selfIndex;
+        const pos = positions[i];
+        const size = isSelf ? mySize : oppSize;
+        const d = CARD_DIMS[size];
+        return (
+          <div
+            key={p.playerId}
+            className="absolute flex flex-col items-center gap-1 -translate-x-1/2"
+            style={{
+              left: `${pos.x}%`,
+              top: `calc(${pos.y}% - ${d.h / 2 + layout.avatar + 30}px)`,
+            }}
+          >
+            <div
+              className={`rounded-full flex items-center justify-center ${color}`}
+              style={{ width: layout.avatar, height: layout.avatar }}
+            >
+              <Icon className="text-white" style={{ width: layout.avatar * 0.5, height: layout.avatar * 0.5 }} />
             </div>
+            <span className="text-[11px] tablet:text-sm text-slate-200 font-medium whitespace-nowrap">
+              {isSelf ? "You" : p.name}
+            </span>
+          </div>
+        );
+      })}
+
+      {/* Flying cards */}
+      <div className="absolute inset-0 pointer-events-none z-10">
+        {Array.from({ length: dealt }).map((_, i) => {
+          const round = Math.floor(i / n);
+          const pIdx = i % n;
+          const slot = round % TABLE_SIZE;
+          const kind = round < 3 ? "down" : round < 6 ? "up" : "hand";
+          const isSelf = pIdx === selfIndex;
+          const size = isSelf ? mySize : oppSize;
+          const d = CARD_DIMS[size];
+          const gap = size === "xs" ? 4 : 8;
+          const pos = positions[pIdx];
+          const dx = (slot - 1) * (d.w + gap);
+          const dy = kind === "hand" ? d.h * 0.8 + 10 : kind === "up" ? -5 : 0;
+          const card =
+            kind === "up"
+              ? players[pIdx].faceUp[slot]
+              : kind === "hand" && isSelf
+                ? state.you.hand[slot]
+                : undefined;
+          const faceDown = kind === "down" || (kind === "hand" && !isSelf);
+
+          return (
+            <motion.div
+              key={i}
+              className="absolute"
+              style={{ marginLeft: -d.w / 2, marginTop: -d.h / 2, zIndex: i }}
+              initial={{ left: "50%", top: "50%", x: 0, y: 0, rotate: -6, opacity: 0.9 }}
+              animate={{ left: `${pos.x}%`, top: `${pos.y}%`, x: dx, y: dy, rotate: 0, opacity: 1 }}
+              transition={{ duration: 0.32, ease: "easeOut" }}
+            >
+              <Card card={card} faceDown={faceDown} size={size} />
+            </motion.div>
           );
         })}
       </div>
 
-      {/* Deck sits in the center */}
-      <div className="flex-1 relative flex items-center justify-center">
-        <div className="absolute inset-0 pointer-events-none">
-          {/* Animated cards flying from the deck to each player */}
-          {Array.from({ length: dealtCount }).map((_, i) => {
-            const round = Math.floor(i / numPlayers);
-            const slot = i % numPlayers;
-            const pos = positions[slot];
-            const isSelf = slot === selfIndex;
-            // Only reveal actual card values for the user; others get face-down
-            const card =
-              isSelf && dealing.hand[round] ? dealing.hand[round] : undefined;
-
-            return (
-              <motion.div
-                key={i}
-                initial={{
-                  left: "50%",
-                  top: "50%",
-                  x: "-50%",
-                  y: "-50%",
-                  opacity: 1,
-                  rotateY: 0,
-                }}
-                animate={{
-                  left: `${pos.xPct}%`,
-                  top: `${pos.yPct}%`,
-                  x: "-50%",
-                  y: "-50%",
-                  opacity: 1,
-                }}
-                transition={{ duration: 0.3, ease: "easeOut" }}
-                className="absolute"
-              >
-                <Card
-                  card={card}
-                  faceDown={!isSelf}
-                  size="md"
-                />
-              </motion.div>
-            );
-          })}
-        </div>
-
-        {/* The "deck" cards stack in the center until dealt */}
-        <div className="relative">
-          <Card faceDown size="lg" />
-        </div>
+      {/* The stock in the centre */}
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+        <Card faceDown size={layout.tableCard} />
       </div>
 
-      {/* Bottom area is empty space for self's cards */}
-      <div className="h-32" />
-
       {/* Status text */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 mt-40 text-center pointer-events-none">
+      <div
+        className="absolute left-1/2 -translate-x-1/2 text-center pointer-events-none"
+        style={{ top: `calc(50% + ${CARD_DIMS[layout.tableCard].h / 2 + 14}px)` }}
+      >
         <motion.div
           animate={{ opacity: [0.5, 1, 0.5] }}
           transition={{ duration: 1.5, repeat: Infinity }}
           className="text-gold font-bold text-lg"
         >
-          Dealing...
+          Dealing…
         </motion.div>
       </div>
     </div>

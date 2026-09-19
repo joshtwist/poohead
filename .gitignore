@@ -42,3 +42,6 @@ worker-configuration.d.ts
 
 # Claude Code agent metadata
 .claude
+
+# e2e visual captures (regenerate with `pnpm test e2e/screenshot.spec.ts`)
+e2e/screenshots

@@ -55,6 +55,11 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Engine unit tests
+        # The Poohead rules engine is pure TypeScript with a full
+        # Vitest suite — cheap to run and the main correctness gate.
+        run: pnpm test:unit
+
       - name: Build SPA
         run: pnpm build
 

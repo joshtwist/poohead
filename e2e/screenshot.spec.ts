@@ -1,62 +1,61 @@
 import { test } from "@playwright/test";
-import { createGame, joinAs, setupTwoPlayers } from "./helpers.ts";
+import {
+  c,
+  closeAll,
+  cs,
+  forceState,
+  handCard,
+  setupPlayers,
+  startGame,
+  waitForPhase,
+  waitForSwapping,
+} from "./helpers.ts";
 
 /**
- * Captures screenshots of key mobile screens for visual review.
- * Disabled by default (only run with `pnpm test e2e/screenshot.spec.ts`).
+ * Captures the key screens on every project for eyeballing:
+ * e2e/screenshots/<project>-<screen>.png (gitignored).
  */
-test.describe("Visual capture", () => {
-  test.beforeEach(async ({}, testInfo) => {
-    test.skip(testInfo.project.name !== "iphone", "iphone screenshots only");
-  });
+test("capture key screens", async ({ browser }, testInfo) => {
+  const dir = "e2e/screenshots";
+  const shot = (name: string) => `${dir}/${testInfo.project.name}-${name}.png`;
+  const { players, pages } = await setupPlayers(browser, 3);
+  const [alice, bob] = players;
+  try {
+    await alice.page.screenshot({ path: shot("lobby") });
+    await startGame(alice.page);
+    await waitForSwapping(pages);
+    await alice.page.waitForTimeout(400);
+    await alice.page.screenshot({ path: shot("swapping") });
 
-  test("mobile gameplay screenshot", async ({ browser }) => {
-    const { ctx1, ctx2, page1, page2 } = await setupTwoPlayers(browser);
-    try {
-      const { gameUrl } = await createGame(page1);
-      await joinAs(page1, "Alice", "cat");
-      await page2.goto(gameUrl);
-      await joinAs(page2, "Bob", "dog");
+    await forceState(alice.page, {
+      hand: cs("2h 3d Jc 5s 9d"),
+      faceUp: cs("7d 9s Ad"),
+      pile: [cs("Kd"), cs("7h")],
+      phase: "playing",
+      makeCurrent: true,
+    });
+    for (const p of pages) await waitForPhase(p, "playing");
+    await handCard(alice.page, "9d").waitFor();
+    await alice.page.waitForTimeout(800);
+    await alice.page.screenshot({ path: shot("my-turn") });
+    await bob.page.screenshot({ path: shot("waiting") });
 
-      await page1.getByTestId("mode-10").click();
-      await page1.getByTestId("start-game-btn").click();
+    await forceState(alice.page, {
+      hand: cs("2h 3d Jc 5s 9d 4c 6c 8c 10c Qc Kc Ac 3s 4s 6s 7s"),
+    });
+    await handCard(alice.page, "7s").waitFor();
+    await alice.page.waitForTimeout(800);
+    await alice.page.screenshot({ path: shot("big-hand") });
 
-      await page1
-        .getByTestId("player-hand")
-        .waitFor({ state: "visible", timeout: 15_000 });
-      await page2
-        .getByTestId("player-hand")
-        .waitFor({ state: "visible", timeout: 15_000 });
-
-      // Wait a moment for any animations to settle
-      await page1.waitForTimeout(500);
-
-      // Find the active player and take screenshots of both
-      const p1Status = await page1.getByTestId("status-bar").textContent();
-      const isP1Active = /your turn/i.test(p1Status ?? "");
-
-      const activePage = isP1Active ? page1 : page2;
-      const waitingPage = isP1Active ? page2 : page1;
-
-      await activePage.screenshot({
-        path: "test-results/mobile-active-player.png",
-        fullPage: false,
-      });
-      await waitingPage.screenshot({
-        path: "test-results/mobile-waiting-player.png",
-        fullPage: false,
-      });
-
-      // Active player draws -> discard phase, captures the "drag here" hint
-      await activePage.getByTestId("deck").click();
-      await activePage.waitForTimeout(300);
-      await activePage.screenshot({
-        path: "test-results/mobile-discard-phase.png",
-        fullPage: false,
-      });
-    } finally {
-      await ctx1.close();
-      await ctx2.close();
-    }
-  });
+    await forceState(alice.page, {
+      hand: [],
+      faceUp: [],
+      faceDown: [c("4h"), null, c("Kd")],
+    });
+    await alice.page.getByTestId("flip-btn").waitFor();
+    await alice.page.waitForTimeout(600);
+    await alice.page.screenshot({ path: shot("blind") });
+  } finally {
+    await closeAll(players);
+  }
 });

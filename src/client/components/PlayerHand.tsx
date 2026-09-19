@@ -1,161 +1,83 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  motion,
-  AnimatePresence,
-  useMotionValue,
-  animate,
-  type PanInfo,
-} from "framer-motion";
-import type { RefObject } from "react";
-import { ArrowUpDown } from "lucide-react";
-import type { Card as CardType } from "../../shared/types.ts";
-import { RANK_ORDER } from "../../shared/types.ts";
-import type { Suit } from "../../shared/types.ts";
+import { useEffect, useRef } from "react";
+import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
+import type { Card as CardType, Rank } from "../../shared/types.ts";
+import { cardKey, cardsEqual } from "../../shared/types.ts";
 import { Card } from "./Card.tsx";
-
-/** Standard bridge suit order: clubs, diamonds, hearts, spades. */
-const SUIT_ORDER: Record<Suit, number> = {
-  clubs: 0,
-  diamonds: 1,
-  hearts: 2,
-  spades: 3,
-};
-
-function sortCards(cards: CardType[]): CardType[] {
-  return [...cards].sort((a, b) => {
-    const rankDiff = RANK_ORDER[a.rank] - RANK_ORDER[b.rank];
-    if (rankDiff !== 0) return rankDiff;
-    return SUIT_ORDER[a.suit] - SUIT_ORDER[b.suit];
-  });
-}
+import { CARD_DIMS, stepFor, type Layout } from "../lib/layout.ts";
 
 interface PlayerHandProps {
-  hand: CardType[];
-  canDiscard: boolean;
-  onDiscard: (card: CardType) => void;
-  discardRef: RefObject<HTMLElement | null>;
-  onDraggingChange?: (card: CardType | null) => void;
-  onDragOverDiscardChange?: (over: boolean) => void;
+  /** Already sorted; cards awaiting server confirmation already removed. */
+  cards: CardType[];
+  layout: Layout;
+  selectedKeys: ReadonlySet<string>;
+  /** Ranks that may be played right now; null = don't dim anything. */
+  playableRanks: ReadonlySet<Rank> | null;
+  wildRanks: ReadonlySet<Rank>;
+  interactive: boolean;
+  onTap: (card: CardType) => void;
+  /** Cards that just arrived (draws, pick-ups) get a gold pulse. */
+  newKeys: ReadonlySet<string>;
+  /** Shown when the hand is empty (e.g. "Playing from your table cards"). */
+  emptyText?: string;
 }
 
-function cardKey(c: CardType): string {
-  return `${c.suit}-${c.rank}`;
-}
+const SPRING = { type: "spring", stiffness: 520, damping: 38 } as const;
 
-function cardsEqual(a: CardType, b: CardType): boolean {
-  return a.suit === b.suit && a.rank === b.rank;
-}
-
-/* ── Layout constants ───────────────────────────────────────────────── */
-
-const CARD_WIDTH = 96;
-const CARD_HEIGHT = 136;
-const TARGET_ROW_PX = 378;
-const MIN_STEP = 28;
-
-function stepFor(count: number): number {
-  if (count <= 1) return CARD_WIDTH;
-  const ideal = (TARGET_ROW_PX - CARD_WIDTH) / (count - 1);
-  return Math.min(CARD_WIDTH, Math.max(MIN_STEP, ideal));
-}
-
-function pointInRect(
-  point: { x: number; y: number },
-  el: HTMLElement | null,
-): boolean {
-  if (!el) return false;
-  const r = el.getBoundingClientRect();
-  return (
-    point.x >= r.left &&
-    point.x <= r.right &&
-    point.y >= r.top &&
-    point.y <= r.bottom
-  );
-}
-
-/* ── HandCard: a single draggable card ──────────────────────────────── */
+/* ── HandCard: one card in the fan ──────────────────────────────────── */
 
 interface HandCardProps {
   card: CardType;
   idx: number;
   step: number;
-  isDragging: boolean;
+  lift: number;
+  size: Layout["handCard"];
+  selected: boolean;
+  dimmed: boolean;
+  wild: boolean;
   isNew: boolean;
-  onDragStart: (card: CardType) => void;
-  onDrag: (card: CardType, info: PanInfo) => void;
-  onDragEnd: (card: CardType, info: PanInfo) => void;
+  interactive: boolean;
+  onTap: (card: CardType) => void;
 }
 
 /**
- * Each card owns its own motion values (x, y, scale, opacity). The
- * parent decides WHICH slot the card is in via `idx`; this component
- * springs x to `idx * step` whenever that changes AND the card is not
- * being dragged. During drag, Framer writes into the same x motion
- * value; we leave the spring alone so drag wins. On release, the
- * spring reactivates and lands the card in its new slot.
- *
- * Scale is driven explicitly (not via `whileDrag`) because whileDrag
- * was not reverting reliably when `order` changed mid-drag: Framer's
- * gesture state got disrupted when React reconciled siblings and moved
- * DOM nodes, leaving the dragged card stuck at scale 1.12.
+ * Each card owns its own motion values. The parent decides WHICH slot the
+ * card is in via `idx`; this component springs x to `idx * step`, and y
+ * to -lift when selected. All positioning is transform-based so DOM order
+ * never matters (see PlayerHand).
  */
 function HandCard({
   card,
   idx,
   step,
-  isDragging,
+  lift,
+  size,
+  selected,
+  dimmed,
+  wild,
   isNew,
-  onDragStart,
-  onDrag,
-  onDragEnd,
+  interactive,
+  onTap,
 }: HandCardProps) {
   const x = useMotionValue(idx * step);
   const y = useMotionValue(0);
-  const scale = useMotionValue(1);
+  const d = CARD_DIMS[size];
 
-  // Spring x to its home whenever the slot changes and we're not dragging.
   useEffect(() => {
-    if (isDragging) return;
-    const controls = animate(x, idx * step, {
-      type: "spring",
-      stiffness: 520,
-      damping: 38,
-    });
+    const controls = animate(x, idx * step, SPRING);
     return () => controls.stop();
-  }, [idx, step, isDragging, x]);
+  }, [idx, step, x]);
 
-  // Spring y back to 0 on drag release (or any non-drag state).
   useEffect(() => {
-    if (isDragging) return;
-    const controls = animate(y, 0, {
-      type: "spring",
-      stiffness: 520,
-      damping: 38,
-    });
+    const controls = animate(y, selected ? -lift : 0, SPRING);
     return () => controls.stop();
-  }, [isDragging, y]);
-
-  // Scale up while dragged, scale back on release.
-  useEffect(() => {
-    const controls = animate(scale, isDragging ? 1.12 : 1, {
-      duration: 0.12,
-    });
-    return () => controls.stop();
-  }, [isDragging, scale]);
+  }, [selected, lift, y]);
 
   return (
     <motion.div
       data-testid={`hand-card-${cardKey(card)}`}
-      drag
-      dragMomentum={false}
-      dragElastic={0}
-      onDragStart={() => onDragStart(card)}
-      onDrag={(_, info) => onDrag(card, info)}
-      onDragEnd={(_, info) => onDragEnd(card, info)}
-      // Opacity is owned by Framer's initial/animate/exit system — NOT a
-      // manual motion-value + useEffect(animate()) pattern. React Strict
-      // Mode double-invokes effects, which was leaving the opacity
-      // animation stopped mid-fade and cards stuck at opacity 0.
+      data-selected={selected ? "true" : undefined}
+      // Opacity is owned by Framer's initial/animate/exit system so React
+      // Strict Mode's double effects can't leave a card stuck mid-fade.
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.18 } }}
@@ -163,20 +85,21 @@ function HandCard({
       style={{
         x,
         y,
-        scale,
         position: "absolute",
         top: 0,
         left: 0,
-        width: `${CARD_WIDTH}px`,
-        height: `${CARD_HEIGHT}px`,
-        zIndex: isDragging ? 100 : idx,
+        width: d.w,
+        height: d.h,
+        zIndex: idx,
       }}
-      className="touch-none cursor-grab active:cursor-grabbing"
+      className={interactive ? "cursor-pointer" : ""}
+      onClick={() => interactive && onTap(card)}
     >
-      <Card card={card} size="lg" />
-      {isNew && !isDragging && (
+      <Card card={card} size={size} selected={selected} dimmed={dimmed} wild={wild} />
+      {isNew && !selected && (
         <motion.div
-          className="absolute inset-0 rounded-[12px] ring-2 ring-gold pointer-events-none"
+          className="absolute inset-0 ring-2 ring-gold pointer-events-none"
+          style={{ borderRadius: d.r }}
           initial={{ opacity: 0 }}
           animate={{ opacity: [0.3, 0.9, 0.3] }}
           transition={{ duration: 1.4, repeat: Infinity }}
@@ -189,195 +112,93 @@ function HandCard({
 /* ── Component ──────────────────────────────────────────────────────── */
 
 /**
- * Player's hand: a single horizontal fan of up to 11 overlapping cards.
+ * The player's hand: a horizontal fan of tap-to-select cards.
  *
- * Architecture:
- * - Each card is ABSOLUTELY positioned; its visible slot is encoded in
- *   `idx` (its index in `order`). HandCard animates x → idx*step.
- * - We render in STABLE DOM ORDER (insertion order), not `order` order.
- *   This is load-bearing: if DOM order tracked `order`, React would
- *   move DOM nodes on every reorder, interrupting Framer's drag
- *   gesture and leaving `whileDrag`-style effects stuck (was the root
- *   cause of the "dragged card floats on top" bug in the last attempt).
- *   All visual positioning is transform-based; DOM order is irrelevant.
- * - Live reorder during drag uses pure arithmetic on pointer.x relative
- *   to the container (no per-frame sibling rect lookups).
- * - Drag is 2-axis (no axis constraint), so the user can drag up onto
- *   the discard pile. `onDragEnd` hit-tests `info.point` against
- *   `discardRef`.
+ * - Every card is ABSOLUTELY positioned; its slot is `idx * step`.
+ * - Cards render in STABLE DOM ORDER (insertion order), not visual order,
+ *   so React never moves DOM nodes when the hand re-sorts — all motion is
+ *   transform-based.
+ * - The fan compresses down to `layout.minStep`, then the row scrolls
+ *   horizontally (hands can hold 20+ cards after a pick-up). The scroller
+ *   reserves `lift` px of top padding so a selected card isn't clipped.
  */
 export function PlayerHand({
-  hand,
-  canDiscard,
-  onDiscard,
-  discardRef,
-  onDraggingChange,
-  onDragOverDiscardChange,
+  cards,
+  layout,
+  selectedKeys,
+  playableRanks,
+  wildRanks,
+  interactive,
+  onTap,
+  newKeys,
+  emptyText,
 }: PlayerHandProps) {
-  const [order, setOrder] = useState<CardType[]>(hand);
-  const [pendingDiscard, setPendingDiscard] = useState<CardType | null>(null);
-  const [draggingCard, setDraggingCard] = useState<CardType | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const lastTargetIdxRef = useRef<number | null>(null);
-  // Stable DOM render order. New cards append; removed cards drop out.
-  // Does NOT update on reorder-during-drag.
+  const d = CARD_DIMS[layout.handCard];
   const domOrderRef = useRef<CardType[]>([]);
 
-  // Track the most recently drawn card so we can highlight it.
-  const [newCardKey, setNewCardKey] = useState<string | null>(null);
-  const prevHandRef = useRef<CardType[]>(hand);
-
-  // Detect newly drawn card (hand grew by 1) or discard (hand shrank).
-  useEffect(() => {
-    const prev = prevHandRef.current;
-    if (hand.length === prev.length + 1) {
-      const prevKeys = new Set(prev.map(cardKey));
-      const added = hand.find((c) => !prevKeys.has(cardKey(c)));
-      if (added) setNewCardKey(cardKey(added));
-    } else if (hand.length < prev.length) {
-      setNewCardKey(null);
-    }
-    prevHandRef.current = hand;
-  }, [hand]);
-
-  // Sync local order with server hand. Preserve manual reorder; append new
-  // cards at the end; drop cards that are no longer in the hand. Skip
-  // during an active drag so the dragged card's slot doesn't shift.
-  useEffect(() => {
-    if (draggingCard) return;
-    setOrder((prev) => {
-      const remaining = [...hand];
-      const preserved: CardType[] = [];
-      for (const card of prev) {
-        const idx = remaining.findIndex((c) => cardsEqual(c, card));
-        if (idx !== -1) {
-          preserved.push(remaining[idx]);
-          remaining.splice(idx, 1);
-        }
-      }
-      return [...preserved, ...remaining];
-    });
-  }, [hand, draggingCard]);
-
-  // Clear pending-discard once the server confirms removal.
-  useEffect(() => {
-    if (pendingDiscard && !hand.some((c) => cardsEqual(c, pendingDiscard))) {
-      setPendingDiscard(null);
-    }
-  }, [hand, pendingDiscard]);
-
-  const visible = order.filter(
-    (c) => !pendingDiscard || !cardsEqual(c, pendingDiscard),
-  );
-
-  // Update the stable DOM render order: keep previous entries that are
-  // still present (so DOM nodes don't move on reorder), add any new
-  // cards at the end.
+  // Keep previous DOM entries that are still present; append new cards.
   {
     const prev = domOrderRef.current;
-    const kept = prev.filter((c) =>
-      visible.some((v) => cardsEqual(v, c)),
-    );
+    const kept = prev.filter((c) => cards.some((v) => cardsEqual(v, c)));
     const seen = new Set(kept.map(cardKey));
-    const additions = visible.filter((c) => !seen.has(cardKey(c)));
+    const additions = cards.filter((c) => !seen.has(cardKey(c)));
     domOrderRef.current = [...kept, ...additions];
   }
   const domOrder = domOrderRef.current;
 
-  const step = stepFor(visible.length);
-  const containerWidth =
-    visible.length === 0 ? CARD_WIDTH : CARD_WIDTH + (visible.length - 1) * step;
-
-  function handleDragStart(card: CardType) {
-    setDraggingCard(card);
-    lastTargetIdxRef.current = visible.findIndex((c) => cardsEqual(c, card));
-    onDraggingChange?.(card);
-  }
-
-  function handleDrag(card: CardType, info: PanInfo) {
-    if (canDiscard) {
-      onDragOverDiscardChange?.(pointInRect(info.point, discardRef.current));
-    }
-    const container = containerRef.current;
-    if (!container) return;
-
-    const rect = container.getBoundingClientRect();
-    const relX = info.point.x - rect.left - CARD_WIDTH / 2;
-    const rawIdx = Math.round(relX / step);
-    const targetIdx = Math.max(0, Math.min(visible.length - 1, rawIdx));
-
-    if (lastTargetIdxRef.current === targetIdx) return;
-    lastTargetIdxRef.current = targetIdx;
-
-    setOrder((prev) => {
-      const fromIdx = prev.findIndex((c) => cardsEqual(c, card));
-      if (fromIdx === -1 || fromIdx === targetIdx) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(fromIdx, 1);
-      next.splice(targetIdx, 0, moved);
-      return next;
-    });
-  }
-
-  function handleSort() {
-    if (draggingCard) return;
-    setOrder(sortCards);
-  }
-
-  function handleDragEnd(card: CardType, info: PanInfo) {
-    setDraggingCard(null);
-    onDraggingChange?.(null);
-    onDragOverDiscardChange?.(false);
-    lastTargetIdxRef.current = null;
-    if (canDiscard && pointInRect(info.point, discardRef.current)) {
-      setPendingDiscard(card);
-      onDiscard(card);
-    }
-  }
+  const step = stepFor(cards.length, d.w, layout.rowWidth, layout.minStep);
+  const containerWidth = cards.length === 0 ? d.w : d.w + (cards.length - 1) * step;
+  const rowHeight = d.h + layout.lift + 8;
 
   return (
-    <div
-      className="w-full pt-3 pb-4 overflow-visible flex justify-center relative"
-      data-testid="player-hand"
-    >
-      <button
-        data-testid="sort-hand-btn"
-        onClick={handleSort}
-        className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-slate-700/60 hover:bg-slate-600/80 flex items-center justify-center text-slate-300 hover:text-white transition-colors cursor-pointer"
-        title="Sort hand"
-      >
-        <ArrowUpDown className="w-4 h-4" />
-      </button>
+    <div className="w-full flex-shrink-0" data-testid="player-hand" data-count={cards.length}>
       <div
-        ref={containerRef}
-        className="relative"
+        className="no-scrollbar overflow-x-auto overflow-y-hidden w-full"
         style={{
-          width: `${containerWidth}px`,
-          height: `${CARD_HEIGHT}px`,
+          height: rowHeight,
+          paddingTop: layout.lift,
+          paddingBottom: 8,
+          touchAction: "pan-x",
+          overscrollBehaviorX: "contain",
         }}
       >
-        <AnimatePresence>
-          {domOrder.map((card) => {
-            const idx = visible.findIndex((c) => cardsEqual(c, card));
-            if (idx === -1) return null;
-            const key = cardKey(card);
-            const isDragging =
-              draggingCard != null && cardsEqual(card, draggingCard);
-            return (
-              <HandCard
-                key={key}
-                card={card}
-                idx={idx}
-                step={step}
-                isDragging={isDragging}
-                isNew={newCardKey === key}
-                onDragStart={handleDragStart}
-                onDrag={handleDrag}
-                onDragEnd={handleDragEnd}
-              />
-            );
-          })}
-        </AnimatePresence>
+        {cards.length === 0 ? (
+          <div
+            className="mx-auto flex items-center justify-center text-slate-300/60 text-sm italic px-4 text-center"
+            style={{ height: d.h, maxWidth: layout.rowWidth }}
+          >
+            {emptyText ?? ""}
+          </div>
+        ) : (
+          <div
+            className="relative mx-auto"
+            style={{ width: containerWidth, height: d.h }}
+          >
+            <AnimatePresence>
+              {domOrder.map((card) => {
+                const idx = cards.findIndex((c) => cardsEqual(c, card));
+                if (idx === -1) return null;
+                const key = cardKey(card);
+                return (
+                  <HandCard
+                    key={key}
+                    card={card}
+                    idx={idx}
+                    step={step}
+                    lift={layout.lift}
+                    size={layout.handCard}
+                    selected={selectedKeys.has(key)}
+                    dimmed={playableRanks !== null && !playableRanks.has(card.rank)}
+                    wild={wildRanks.has(card.rank)}
+                    isNew={newKeys.has(key)}
+                    interactive={interactive}
+                    onTap={onTap}
+                  />
+                );
+              })}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
     </div>
   );

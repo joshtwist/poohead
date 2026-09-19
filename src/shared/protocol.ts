@@ -1,10 +1,5 @@
-import type {
-  Card,
-  GameMode,
-  GamePhase,
-  PlayerIcon,
-  TurnPhase,
-} from "./types.ts";
+import type { Card, GamePhase, PlayerIcon, Source } from "./types.ts";
+import type { Requirement, RuleSetId } from "./rules.ts";
 
 // ── Client → Server ────────────────────────────────────────────────
 
@@ -12,11 +7,15 @@ export type ClientMessage =
   | JoinMessage
   | ReconnectMessage
   | StartGameMessage
-  | DrawMessage
-  | DiscardMessage
+  | SwapMessage
+  | ReadyMessage
+  | ForceStartMessage
+  | PlayMessage
+  | FlipMessage
+  | PickUpMessage
   | CreateRematchMessage
   | PingMessage
-  | TestForceHandMessage;
+  | TestForceMessage;
 
 export interface JoinMessage {
   type: "join";
@@ -30,26 +29,49 @@ export interface ReconnectMessage {
   playerId: string;
 }
 
+/** Host only. Deals the cards under the chosen rule set. */
 export interface StartGameMessage {
   type: "start_game";
-  mode: GameMode;
+  rules: RuleSetId;
 }
 
-export interface DrawMessage {
-  type: "draw";
-  source: "deck" | "discard";
+/** Swapping phase: trade one hand card for one of your face-up cards. */
+export interface SwapMessage {
+  type: "swap";
+  handCard: Card;
+  faceUpCard: Card;
 }
 
-export interface DiscardMessage {
-  type: "discard";
-  card: Card;
+/** Swapping phase: done swapping. Play begins when everyone is ready. */
+export interface ReadyMessage {
+  type: "ready";
+}
+
+/** Host only: start once every CONNECTED player is ready. */
+export interface ForceStartMessage {
+  type: "force_start";
 }
 
 /**
- * Sent from the GameComplete screen when a player opens a rematch.
- * The server generates a new gameId and attaches it to the completed
- * game's state so all connected clients can see the rematch CTA.
+ * Play one or more same-rank cards. The server works out whether they
+ * come from your hand or your face-up cards (hand first, always).
  */
+export interface PlayMessage {
+  type: "play";
+  cards: Card[];
+}
+
+/** Flip one of your face-down cards (stable slot 0..2). */
+export interface FlipMessage {
+  type: "flip";
+  slot: number;
+}
+
+/** Take the whole pile into your hand. */
+export interface PickUpMessage {
+  type: "pick_up";
+}
+
 export interface CreateRematchMessage {
   type: "create_rematch";
 }
@@ -59,26 +81,32 @@ export interface PingMessage {
 }
 
 /**
- * TEST-ONLY message. Overwrites the SENDER'S hand, used by the e2e
- * suite to set up a hand that's one discard away from going Rummy.
- * The playerId comes from the WebSocket tag — there's no parameter
- * because tests should never be reaching across players. Ignored
- * outside dev/test mode (see GameRoom.env.TEST_HOOKS).
+ * TEST-ONLY. Overwrites parts of the SENDER'S situation (and the shared
+ * stock/pile) so the e2e suite can reach specific scenarios
+ * deterministically. Omitted fields are left untouched. Ignored unless
+ * the Worker runs with TEST_HOOKS=1 (never in production).
  */
-export interface TestForceHandMessage {
-  type: "_test_force_hand";
-  hand: Card[];
+export interface TestForceMessage {
+  type: "_test_force";
+  hand?: Card[];
+  faceUp?: Card[];
+  /** Length 3; null marks an already-flipped slot. */
+  faceDown?: (Card | null)[];
+  stock?: Card[];
+  /** Plays bottom → top; each inner array is one same-rank play. */
+  pile?: Card[][];
+  /** Make the sender the current player. */
+  makeCurrent?: boolean;
+  /** Jump straight from swapping to playing (everyone auto-readied). */
+  phase?: "playing";
 }
 
 // ── Server → Client ────────────────────────────────────────────────
 
 export type ServerMessage =
   | StateMessage
-  | DealingMessage
   | LobbyInfoMessage
   | ErrorMessage
-  | PlayerJoinedMessage
-  | PlayerLeftMessage
   | PlayerReconnectedMessage
   | PlayerDisconnectedMessage
   | GameCompleteMessage
@@ -98,12 +126,21 @@ export interface LobbyInfoMessage {
   }[];
 }
 
+/** What everyone can see about a player. Face-up cards are public. */
 export interface PlayerView {
   playerId: string;
   name: string;
   icon: PlayerIcon;
-  cardCount: number;
+  handCount: number;
+  faceUp: Card[];
+  /** Which of the 3 face-down slots still hold a card. */
+  faceDownSlots: boolean[];
+  faceDownCount: number;
   connected: boolean;
+  ready: boolean;
+  isOut: boolean;
+  /** 1-based finishing position once out; null while still playing. */
+  finishedPlace: number | null;
 }
 
 export interface SelfView {
@@ -111,6 +148,12 @@ export interface SelfView {
   name: string;
   icon: PlayerIcon;
   hand: Card[];
+  faceUp: Card[];
+  faceDownSlots: boolean[];
+  faceDownCount: number;
+  ready: boolean;
+  /** Where your next play must come from (null unless playing). */
+  source: Source | null;
   isCreator: boolean;
 }
 
@@ -120,47 +163,70 @@ export interface RematchInfoView {
   creatorName: string;
 }
 
+interface EventBase {
+  seq: number;
+  playerId: string;
+  /** Who plays next after this event (null once the game is complete). */
+  nextPlayerId: string | null;
+}
+
+/**
+ * Exactly one event per mutation; burn / skip / out are flags on the
+ * play so a client can build every banner it needs from one record.
+ */
+export type GameEvent = EventBase &
+  (
+    | { kind: "start"; lowestRank: string | null }
+    | {
+        kind: "play";
+        cards: Card[];
+        source: Source;
+        burned: boolean;
+        burnedCount: number;
+        skippedIds: string[];
+        wentOut: boolean;
+      }
+    | {
+        kind: "flip";
+        card: Card;
+        burned: boolean;
+        burnedCount: number;
+        skippedIds: string[];
+        wentOut: boolean;
+      }
+    | { kind: "flip_fail"; card: Card; pickedUp: number }
+    | { kind: "pickup"; count: number }
+  );
+
 export interface StateMessage {
   type: "state";
   phase: GamePhase;
-  mode: GameMode | null;
-  turnPhase: TurnPhase | null;
+  rules: RuleSetId;
   you: SelfView;
   players: PlayerView[];
+  /** Null unless the game is in the playing phase. */
   currentPlayerId: string | null;
-  discardTop: Card | null;
-  deckCount: number;
+  /** Every card on the pile, bottom → top. Public information. */
+  pile: Card[];
+  /** How many of the top pile cards were played together (the top play). */
+  lastPlayCount: number;
+  requirement: Requirement;
+  stockCount: number;
+  burnedCount: number;
+  /** Players who have gone out, in order. */
+  finishedOrder: string[];
+  lastEvent: GameEvent | null;
   /**
    * Present on completed games once any player has opened a rematch.
    * Every connected client watches this field — when it flips from
-   * null to an object, the win screen swaps its CTA from "Create New
-   * Game" to "Join {creatorName}'s New Game".
+   * null to an object, the end screen swaps its CTA to "Join X's game".
    */
   rematch: RematchInfoView | null;
-}
-
-export interface DealingMessage {
-  type: "dealing";
-  mode: GameMode;
-  playerOrder: string[];
-  hand: Card[];
-  discardTop: Card;
-  deckCount: number;
 }
 
 export interface ErrorMessage {
   type: "error";
   message: string;
-}
-
-export interface PlayerJoinedMessage {
-  type: "player_joined";
-  player: PlayerView;
-}
-
-export interface PlayerLeftMessage {
-  type: "player_left";
-  playerId: string;
 }
 
 export interface PlayerReconnectedMessage {
@@ -173,20 +239,28 @@ export interface PlayerDisconnectedMessage {
   playerId: string;
 }
 
-export interface ScoreEntry {
+export interface StandingEntry {
   playerId: string;
   name: string;
   icon: PlayerIcon;
-  score: number;
+  /** 1 = first out … n = the 💩head. */
+  place: number;
+  isPoohead: boolean;
+}
+
+export interface FinalCards {
   hand: Card[];
+  faceUp: Card[];
+  /** Revealed only here, once the game is over. */
+  faceDown: Card[];
 }
 
 export interface GameCompleteMessage {
   type: "game_complete";
-  winnerId: string;
-  winnerName: string;
-  scores: ScoreEntry[];
-  celebrationGif: string;
+  pooheadId: string;
+  pooheadName: string;
+  standings: StandingEntry[];
+  finalCards: Record<string, FinalCards>;
 }
 
 export interface PongMessage {

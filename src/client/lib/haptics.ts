@@ -25,3 +25,18 @@ export function vibrateWin(): void {
 export function vibrateError(): void {
   vibrate([50, 30, 50]);
 }
+
+/** Short triple - the pile just burned */
+export function vibrateBurn(): void {
+  vibrate([30, 30, 60]);
+}
+
+/** Heavy double - you picked up the pile (or a blind flip failed) */
+export function vibratePickup(): void {
+  vibrate([60, 40, 90]);
+}
+
+/** Long sad buzz - you're the 💩head */
+export function vibrateLoss(): void {
+  vibrate([200, 100, 200]);
+}
