@@ -7,7 +7,7 @@
 
 export type Tier = "compact" | "phone" | "tablet" | "tabletWide";
 
-export type CardSize = "xs" | "sm" | "md" | "lg" | "xl";
+export type CardSize = "xs" | "sm" | "md" | "ml" | "lg" | "xl";
 
 export interface CardDims {
   w: number;
@@ -26,6 +26,7 @@ export const CARD_DIMS: Record<CardSize, CardDims> = {
   xs: { w: 26, h: 36, r: 4, rank: 10, suit: 8, pad: 2 },
   sm: { w: 40, h: 56, r: 6, rank: 11, suit: 8, pad: 3 },
   md: { w: 64, h: 90, r: 10, rank: 15, suit: 11, pad: 5 },
+  ml: { w: 80, h: 112, r: 11, rank: 19, suit: 13, pad: 7 },
   lg: { w: 96, h: 136, r: 12, rank: 24, suit: 16, pad: 9 },
   xl: { w: 120, h: 168, r: 14, rank: 30, suit: 20, pad: 11 },
 };
@@ -75,7 +76,7 @@ export const LAYOUT: Record<Tier, LayoutSpec> = {
     tier: "phone",
     oppCard: "xs",
     tableCard: "lg",
-    myTableCard: "md",
+    myTableCard: "ml",
     handCard: "lg",
     minStep: 30,
     rowPad: 12,

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import type { Card as CardType, Rank } from "../../shared/types.ts";
 import { RANKS, cardKey, cardsEqual, sortCards } from "../../shared/types.ts";
 import type { ClientMessage, StateMessage } from "../../shared/protocol.ts";
@@ -11,9 +12,11 @@ import {
 } from "../../shared/rules.ts";
 import { ICON_MAP, ICON_COLORS } from "../lib/icons.ts";
 import { ordinal } from "../lib/format.ts";
-import { vibrateError } from "../lib/haptics.ts";
+import { vibrateAction, vibrateError } from "../lib/haptics.ts";
+import { CARD_DIMS, type CardSize } from "../lib/layout.ts";
 import { useLayoutTier } from "../hooks/useLayoutTier.ts";
 import { useGameEvents } from "../hooks/useGameEvents.ts";
+import { Card } from "./Card.tsx";
 import { OpponentsArea } from "./OpponentsArea.tsx";
 import { StatusRow } from "./StatusRow.tsx";
 import { TableArea } from "./TableArea.tsx";
@@ -21,6 +24,7 @@ import { MyTable, type MyTableMode } from "./MyTable.tsx";
 import { PlayerHand } from "./PlayerHand.tsx";
 import { ActionBar, type ActionModel } from "./ActionBar.tsx";
 import { EventBanner } from "./EventBanner.tsx";
+import { EmojiRain } from "./EmojiRain.tsx";
 
 interface GameBoardProps {
   state: StateMessage;
@@ -39,8 +43,38 @@ type Selection =
   | { kind: "swapFaceUp"; card: CardType };
 
 const NONE: Selection = { kind: "none" };
+const NONE_KEYS: ReadonlySet<string> = new Set();
 const PENDING_TTL_MS = 2500;
 const PICKUP_ARM_MS = 2200;
+const SWAP_FLIGHT_MS = 480;
+const SWAP_HIDE_TTL_MS = 1500;
+
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+interface Flight {
+  card: CardType;
+  from: Rect;
+  to: Rect;
+  size: CardSize;
+}
+
+interface SwapFlight {
+  id: number;
+  up: Flight;
+  down: Flight;
+}
+
+interface PendingSwap {
+  handCard: CardType;
+  faceUpCard: CardType;
+  fromHand: Rect;
+  fromTable: Rect;
+}
 
 function hasCard(list: CardType[], card: CardType): boolean {
   return list.some((c) => cardsEqual(c, card));
@@ -49,9 +83,9 @@ function hasCard(list: CardType[], card: CardType): boolean {
 /**
  * The table during the swapping and playing phases. Owns every piece of
  * client-only state (selection, optimistic plays, the pick-up confirm,
- * event banners, the turn stopwatch) and derives everything else from
- * the server state each render, so a fresh `state` can never leave a
- * stale selection behind.
+ * event banners, the turn stopwatch, the swap flight) and derives
+ * everything else from the server state each render, so a fresh `state`
+ * can never leave a stale selection behind.
  */
 export function GameBoard({ state, gameId, send, errorSeq }: GameBoardProps) {
   const layout = useLayoutTier();
@@ -65,12 +99,13 @@ export function GameBoard({ state, gameId, send, errorSeq }: GameBoardProps) {
   const myIndex = state.players.findIndex((p) => p.playerId === me.playerId);
   const myView = state.players[myIndex];
   const amOut = myView?.isOut ?? false;
+  const boardRef = useRef<HTMLDivElement>(null);
 
   // ── Client-only state ─────────────────────────────────────────────
   const [rawSelection, setRawSelection] = useState<Selection>(NONE);
   const [pendingPlay, setPendingPlay] = useState<{ cards: CardType[]; at: number } | null>(null);
   const [pickupArmed, setPickupArmed] = useState(false);
-  const { banner, flash } = useGameEvents(state, me.playerId, gameId);
+  const { banner, flash, effect } = useGameEvents(state, me.playerId, gameId);
 
   // Reset transient state whenever the turn / phase moves on.
   const eventSeq = state.lastEvent?.seq ?? 0;
@@ -109,6 +144,14 @@ export function GameBoard({ state, gameId, send, errorSeq }: GameBoardProps) {
     return () => clearInterval(id);
   }, [state.currentPlayerId, isPlaying]);
 
+  // Tab title: a backgrounded phone should still know it's your go.
+  useEffect(() => {
+    document.title = isMyTurn ? "Your turn · 💩head" : "💩head";
+    return () => {
+      document.title = "💩head";
+    };
+  }, [isMyTurn]);
+
   // Cards that just arrived in the hand (draws, pick-ups) get a pulse.
   const handKeyString = me.hand.map(cardKey).join(",");
   const prevHandRef = useRef<Set<string> | null>(null);
@@ -124,6 +167,61 @@ export function GameBoard({ state, gameId, send, errorSeq }: GameBoardProps) {
     const t = setTimeout(() => setNewKeys(new Set()), 1800);
     return () => clearTimeout(t);
   }, [handKeyString]);
+
+  // ── Swap flight: the two exchanged cards fly past each other ──────
+  const pendingSwapRef = useRef<PendingSwap | null>(null);
+  const [swapHidden, setSwapHidden] = useState<ReadonlySet<string>>(NONE_KEYS);
+  const [swapFlight, setSwapFlight] = useState<SwapFlight | null>(null);
+
+  /** Bounding box of a board element, relative to the board. */
+  const rectOf = useCallback((testId: string): Rect | null => {
+    const board = boardRef.current;
+    const el = board?.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
+    if (!board || !el) return null;
+    const b = board.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    return { x: r.left - b.left, y: r.top - b.top, w: r.width, h: r.height };
+  }, []);
+
+  // Once the server confirms the swap, measure where the two cards ended
+  // up and fly them there from where they were.
+  useLayoutEffect(() => {
+    const p = pendingSwapRef.current;
+    if (!p) return;
+    const done = hasCard(me.faceUp, p.handCard) && hasCard(me.hand, p.faceUpCard);
+    if (!done) return;
+    pendingSwapRef.current = null;
+    const toTable = rectOf(`faceup-card-${cardKey(p.handCard)}`);
+    const toHand = rectOf(`hand-card-${cardKey(p.faceUpCard)}`);
+    if (!toTable || !toHand) {
+      setSwapHidden(NONE_KEYS);
+      return;
+    }
+    setSwapFlight({
+      id: Date.now(),
+      up: { card: p.handCard, from: p.fromHand, to: toTable, size: layout.myTableCard },
+      down: { card: p.faceUpCard, from: p.fromTable, to: toHand, size: layout.handCard },
+    });
+  }, [me.hand, me.faceUp, rectOf, layout.myTableCard, layout.handCard]);
+
+  useEffect(() => {
+    if (!swapFlight) return;
+    const t = setTimeout(() => {
+      setSwapFlight(null);
+      setSwapHidden(NONE_KEYS);
+    }, SWAP_FLIGHT_MS);
+    return () => clearTimeout(t);
+  }, [swapFlight]);
+
+  // Never leave cards invisible if the swap was rejected or lost.
+  useEffect(() => {
+    if (swapHidden.size === 0) return;
+    const t = setTimeout(() => {
+      pendingSwapRef.current = null;
+      setSwapHidden(NONE_KEYS);
+    }, SWAP_HIDE_TTL_MS);
+    return () => clearTimeout(t);
+  }, [swapHidden]);
 
   // ── Derived ───────────────────────────────────────────────────────
   const wildRanks = useMemo(
@@ -203,8 +301,15 @@ export function GameBoard({ state, gameId, send, errorSeq }: GameBoardProps) {
   );
 
   function sendSwap(handCard: CardType, faceUpCard: CardType) {
+    const fromHand = rectOf(`hand-card-${cardKey(handCard)}`);
+    const fromTable = rectOf(`faceup-card-${cardKey(faceUpCard)}`);
+    if (fromHand && fromTable) {
+      pendingSwapRef.current = { handCard, faceUpCard, fromHand, fromTable };
+      setSwapHidden(new Set([cardKey(handCard), cardKey(faceUpCard)]));
+    }
     send({ type: "swap", handCard, faceUpCard });
     setRawSelection(NONE);
+    vibrateAction();
   }
 
   function onTapHand(card: CardType) {
@@ -413,15 +518,16 @@ export function GameBoard({ state, gameId, send, errorSeq }: GameBoardProps) {
       ? "Hand empty — play from your table cards"
       : source === "blind"
         ? "Down to your face-down cards…"
-        : isSwapping
-          ? ""
-          : "";
+        : "";
 
   const MyIcon = ICON_MAP[me.icon];
   const myColor = ICON_COLORS[(myIndex >= 0 ? myIndex : 0) % ICON_COLORS.length];
   const showRotate = layout.width > layout.height && layout.height < 480;
+  const wildList = RANKS.filter((r) => wildRanks.has(r)).join(", ");
 
-  const table = (
+  const centre = isSwapping ? (
+    <SwapCallout wildList={wildList} ready={me.ready} />
+  ) : (
     <TableArea
       stockCount={state.stockCount}
       pile={state.pile}
@@ -445,6 +551,8 @@ export function GameBoard({ state, gameId, send, errorSeq }: GameBoardProps) {
       selectedSlot={selection.kind === "blind" ? selection.slot : null}
       playableRanks={isMyTurn && source === "faceUp" ? legalRanks : null}
       wildRanks={wildRanks}
+      hiddenKeys={swapHidden}
+      targetFaceUp={selection.kind === "swapHand"}
       onTapFaceUp={onTapFaceUp}
       onTapBlind={onTapBlind}
       you={{ Icon: MyIcon, colorClass: myColor, handCount: me.hand.length, isOut: amOut }}
@@ -453,6 +561,7 @@ export function GameBoard({ state, gameId, send, errorSeq }: GameBoardProps) {
 
   return (
     <div
+      ref={boardRef}
       data-testid="game-board"
       data-tier={layout.tier}
       data-phase={phase}
@@ -467,6 +576,7 @@ export function GameBoard({ state, gameId, send, errorSeq }: GameBoardProps) {
         currentPlayerId={state.currentPlayerId}
         phase={phase}
         layout={layout}
+        lastEvent={state.lastEvent}
       />
 
       <StatusRow
@@ -479,14 +589,16 @@ export function GameBoard({ state, gameId, send, errorSeq }: GameBoardProps) {
 
       {layout.sideBySide ? (
         <div className="flex-1 min-h-0 flex items-center justify-center gap-10 px-4">
-          <div className="flex items-center justify-center">{table}</div>
+          <div className="flex items-center justify-center">{centre}</div>
           <div className="w-px self-stretch my-6 bg-white/10" />
           {myTable}
         </div>
       ) : (
         <>
-          <div className="flex-1 min-h-0 flex items-center justify-center">{table}</div>
+          <div className="flex-1 min-h-0 flex items-center justify-center">{centre}</div>
           {myTable}
+          {/* A little of the spare height goes between your table and your hand. */}
+          <div className="flex-[0.35] min-h-0 max-h-6" />
         </>
       )}
 
@@ -499,12 +611,27 @@ export function GameBoard({ state, gameId, send, errorSeq }: GameBoardProps) {
         interactive={handInteractive}
         onTap={onTapHand}
         newKeys={newKeys}
+        hiddenKeys={swapHidden}
+        targetAll={selection.kind === "swapFaceUp"}
         emptyText={emptyText}
       />
 
       <ActionBar model={actionModel} layout={layout} />
 
       <EventBanner banner={banner} position={layout.sideBySide ? "high" : "table"} />
+
+      {swapFlight && <SwapFlightLayer flight={swapFlight} />}
+
+      {effect && (
+        <EmojiRain
+          key={effect.seq}
+          emoji={effect.kind === "poo" ? "💩" : ["🎉", "✨", "🎊"]}
+          count={effect.count}
+          mode="burst"
+          kind={effect.kind}
+          className="z-30"
+        />
+      )}
 
       {showRotate && (
         <div
@@ -519,3 +646,60 @@ export function GameBoard({ state, gameId, send, errorSeq }: GameBoardProps) {
     </div>
   );
 }
+
+/* ── Swap phase callout ─────────────────────────────────────────────── */
+
+function SwapCallout({ wildList, ready }: { wildList: string; ready: boolean }) {
+  return (
+    <div
+      data-testid="swap-callout"
+      className="mx-4 max-w-[360px] tablet:max-w-[460px] rounded-2xl bg-slate-900/45 border border-white/10 px-4 py-3 tablet:px-6 tablet:py-4 text-center"
+    >
+      <div className="text-gold font-bold text-base tablet:text-lg">
+        {ready ? "Table set ✓" : "Set up your table"}
+      </div>
+      <p className="text-slate-200 text-sm tablet:text-base mt-1 leading-snug">
+        Your three face-up cards get played after your hand, so park your strongest there:
+        Aces, Kings and the wild ones ({wildList}).
+      </p>
+      {!ready && (
+        <p className="text-slate-300/80 text-xs tablet:text-sm mt-2">
+          Tap a hand card, then a face-up card to swap them. Tap Ready when you're happy.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* ── Swap flight layer ──────────────────────────────────────────────── */
+
+/**
+ * Two cards flying between the hand and the table. Each is rendered at
+ * its destination size and scaled from its origin size, with the origin
+ * at the top-left so the boxes line up exactly at both ends.
+ */
+function SwapFlightLayer({ flight }: { flight: SwapFlight }) {
+  return (
+    <div className="absolute inset-0 pointer-events-none z-30" data-testid="swap-flight">
+      <FlyingCard flight={flight.down} z={1} />
+      <FlyingCard flight={flight.up} z={2} />
+    </div>
+  );
+}
+
+function FlyingCard({ flight, z }: { flight: Flight; z: number }) {
+  const d = CARD_DIMS[flight.size];
+  const fromScale = flight.from.w / d.w;
+  return (
+    <motion.div
+      className="absolute left-0 top-0"
+      style={{ width: d.w, height: d.h, transformOrigin: "top left", zIndex: z }}
+      initial={{ x: flight.from.x, y: flight.from.y, scale: fromScale, rotate: 0 }}
+      animate={{ x: flight.to.x, y: flight.to.y, scale: 1, rotate: [0, z === 2 ? -8 : 8, 0] }}
+      transition={{ type: "spring", stiffness: 300, damping: 30, mass: 0.9 }}
+    >
+      <Card card={flight.card} size={flight.size} className="shadow-2xl" />
+    </motion.div>
+  );
+}
+

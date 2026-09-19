@@ -24,10 +24,10 @@ export function StatusRow({
       : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
   return (
-    <div className="flex-shrink-0 flex flex-wrap justify-center items-center gap-2 px-3 py-1 compact:py-0.5 min-h-[34px]">
+    <div className="flex-shrink-0 flex flex-wrap justify-center items-center gap-2 px-3 py-1.5 compact:py-1 min-h-[40px]">
       <div
         data-testid="status-bar"
-        className={`flex items-center gap-2 px-3.5 py-1 rounded-full text-sm compact:text-xs font-semibold whitespace-nowrap ${
+        className={`flex items-center gap-2 px-3.5 h-8 compact:h-7 rounded-full text-sm compact:text-xs font-semibold whitespace-nowrap ${
           highlight
             ? "bg-gold/15 text-gold border border-gold/40"
             : "bg-slate-900/40 text-slate-200 border border-white/5"
@@ -44,7 +44,7 @@ export function StatusRow({
       {requirement && (
         <div
           data-testid="requirement-chip"
-          className={`px-3 py-1 rounded-full text-xs compact:text-[11px] font-medium whitespace-nowrap ${
+          className={`flex items-center px-3 h-8 compact:h-7 rounded-full text-xs compact:text-[11px] font-medium whitespace-nowrap ${
             requirementActive
               ? "bg-white/10 text-white border border-white/15"
               : "bg-slate-900/30 text-slate-300/80 border border-white/5"

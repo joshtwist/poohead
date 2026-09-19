@@ -156,6 +156,25 @@ export function TableArea({
                 </span>
               </motion.div>
             )}
+            {flash?.kind === "burn" &&
+              Array.from({ length: 7 }).map((_, i) => (
+                <motion.span
+                  key={`${flash.seq}-flame-${i}`}
+                  className="absolute bottom-0 pointer-events-none"
+                  style={{ left: `${6 + i * 14}%`, zIndex: 39, fontSize: 18 + ((i * 7) % 12) }}
+                  initial={{ opacity: 0, y: 8, scale: 0.5 }}
+                  animate={{
+                    opacity: [0, 1, 1, 0],
+                    y: [8, -30 - (i % 3) * 18, -70 - (i % 2) * 20, -120],
+                    x: [0, (i % 2 ? 1 : -1) * 6, (i % 2 ? -1 : 1) * 8, 0],
+                    scale: [0.5, 1.2, 1, 0.7],
+                  }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 1.2, delay: i * 0.06, times: [0, 0.25, 0.7, 1] }}
+                >
+                  🔥
+                </motion.span>
+              ))}
           </AnimatePresence>
         </motion.div>
 

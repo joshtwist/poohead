@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { Sparkles, LogIn } from "lucide-react";
 import type {
@@ -10,6 +10,7 @@ import type {
 import { ICON_MAP, ICON_COLORS } from "../lib/icons.ts";
 import { ordinal } from "../lib/format.ts";
 import { Card } from "./Card.tsx";
+import { EmojiRain } from "./EmojiRain.tsx";
 
 interface GameCompleteProps {
   state: StateMessage;
@@ -66,7 +67,7 @@ export function GameComplete({
       transition={{ duration: 0.3 }}
       className="relative flex flex-1 min-h-0 flex-col overflow-y-auto"
     >
-      <PoohRain count={amPoohead ? 40 : 12} />
+      <EmojiRain emoji="💩" count={amPoohead ? 40 : 12} mode="loop" kind="poo" />
 
       <div className="relative flex flex-col items-center px-6 py-8 w-full max-w-md mx-auto">
         {/* Banner */}
@@ -178,37 +179,5 @@ export function GameComplete({
         )}
       </div>
     </motion.div>
-  );
-}
-
-/** Falling 💩 emoji. Pure CSS keyframes; static under reduced motion. */
-function PoohRain({ count }: { count: number }) {
-  const drops = useMemo(
-    () =>
-      Array.from({ length: count }).map((_, i) => ({
-        left: (i * 37 + 11) % 100,
-        delay: ((i * 53) % 40) / 10,
-        duration: 5 + ((i * 29) % 40) / 10,
-        size: 18 + ((i * 17) % 22),
-      })),
-    [count],
-  );
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden data-testid="poo-rain">
-      {drops.map((d, i) => (
-        <span
-          key={i}
-          className="poo-drop"
-          style={{
-            left: `${d.left}%`,
-            animationDelay: `${d.delay}s`,
-            animationDuration: `${d.duration}s`,
-            fontSize: d.size,
-          }}
-        >
-          💩
-        </span>
-      ))}
-    </div>
   );
 }
