@@ -17,11 +17,18 @@ interface PlayerHandProps {
   onTap: (card: CardType) => void;
   /** Cards that just arrived (draws, pick-ups) get a gold pulse. */
   newKeys: ReadonlySet<string>;
+  /** Cards rendered invisibly while a flight animation stands in for them. */
+  hiddenKeys?: ReadonlySet<string>;
+  /** Swap phase: a face-up card is selected, so every hand card is a target. */
+  targetAll?: boolean;
   /** Shown when the hand is empty (e.g. "Playing from your table cards"). */
   emptyText?: string;
 }
 
 const SPRING = { type: "spring", stiffness: 520, damping: 38 } as const;
+/** Room around the fan so selection rings and shadows aren't clipped. */
+const EDGE = 8;
+const NONE_SET: ReadonlySet<string> = new Set();
 
 /* ── HandCard: one card in the fan ──────────────────────────────────── */
 
@@ -35,6 +42,8 @@ interface HandCardProps {
   dimmed: boolean;
   wild: boolean;
   isNew: boolean;
+  hidden: boolean;
+  target: boolean;
   interactive: boolean;
   onTap: (card: CardType) => void;
 }
@@ -55,6 +64,8 @@ function HandCard({
   dimmed,
   wild,
   isNew,
+  hidden,
+  target,
   interactive,
   onTap,
 }: HandCardProps) {
@@ -76,6 +87,7 @@ function HandCard({
     <motion.div
       data-testid={`hand-card-${cardKey(card)}`}
       data-selected={selected ? "true" : undefined}
+      data-target={target ? "true" : undefined}
       // Opacity is owned by Framer's initial/animate/exit system so React
       // Strict Mode's double effects can't leave a card stuck mid-fade.
       initial={{ opacity: 0 }}
@@ -95,8 +107,11 @@ function HandCard({
       className={interactive ? "cursor-pointer" : ""}
       onClick={() => interactive && onTap(card)}
     >
-      <Card card={card} size={size} selected={selected} dimmed={dimmed} wild={wild} />
-      {isNew && !selected && (
+      {/* Hide instantly (a flying copy takes over), fade back in when it lands. */}
+      <div style={{ opacity: hidden ? 0 : 1, transition: hidden ? "none" : "opacity 150ms ease-out" }}>
+        <Card card={card} size={size} selected={selected} dimmed={dimmed} wild={wild} />
+      </div>
+      {isNew && !selected && !hidden && (
         <motion.div
           className="absolute inset-0 ring-2 ring-gold pointer-events-none"
           style={{ borderRadius: d.r }}
@@ -104,6 +119,9 @@ function HandCard({
           animate={{ opacity: [0.3, 0.9, 0.3] }}
           transition={{ duration: 1.4, repeat: Infinity }}
         />
+      )}
+      {target && !selected && !hidden && (
+        <div className="absolute inset-0 pointer-events-none pulse-gold" style={{ borderRadius: d.r }} />
       )}
     </motion.div>
   );
@@ -120,7 +138,7 @@ function HandCard({
  *   transform-based.
  * - The fan compresses down to `layout.minStep`, then the row scrolls
  *   horizontally (hands can hold 20+ cards after a pick-up). The scroller
- *   reserves `lift` px of top padding so a selected card isn't clipped.
+ *   reserves room above for lifted cards and around the fan for rings.
  */
 export function PlayerHand({
   cards,
@@ -131,6 +149,8 @@ export function PlayerHand({
   interactive,
   onTap,
   newKeys,
+  hiddenKeys = NONE_SET,
+  targetAll = false,
   emptyText,
 }: PlayerHandProps) {
   const d = CARD_DIMS[layout.handCard];
@@ -146,9 +166,12 @@ export function PlayerHand({
   }
   const domOrder = domOrderRef.current;
 
-  const step = stepFor(cards.length, d.w, layout.rowWidth, layout.minStep);
+  // The fan fills the row exactly, so leave room for the edge padding.
+  const step = stepFor(cards.length, d.w, layout.rowWidth - EDGE * 2, layout.minStep);
   const containerWidth = cards.length === 0 ? d.w : d.w + (cards.length - 1) * step;
-  const rowHeight = d.h + layout.lift + 8;
+  const top = layout.lift + 6;
+  const bottom = 10;
+  const rowHeight = d.h + top + bottom;
 
   return (
     <div className="w-full flex-shrink-0" data-testid="player-hand" data-count={cards.length}>
@@ -156,8 +179,8 @@ export function PlayerHand({
         className="no-scrollbar overflow-x-auto overflow-y-hidden w-full"
         style={{
           height: rowHeight,
-          paddingTop: layout.lift,
-          paddingBottom: 8,
+          paddingTop: top,
+          paddingBottom: bottom,
           touchAction: "pan-x",
           overscrollBehaviorX: "contain",
         }}
@@ -171,32 +194,41 @@ export function PlayerHand({
           </div>
         ) : (
           <div
-            className="relative mx-auto"
-            style={{ width: containerWidth, height: d.h }}
+            className="mx-auto"
+            style={{
+              width: containerWidth + EDGE * 2,
+              paddingLeft: EDGE,
+              paddingRight: EDGE,
+              height: d.h,
+            }}
           >
-            <AnimatePresence>
-              {domOrder.map((card) => {
-                const idx = cards.findIndex((c) => cardsEqual(c, card));
-                if (idx === -1) return null;
-                const key = cardKey(card);
-                return (
-                  <HandCard
-                    key={key}
-                    card={card}
-                    idx={idx}
-                    step={step}
-                    lift={layout.lift}
-                    size={layout.handCard}
-                    selected={selectedKeys.has(key)}
-                    dimmed={playableRanks !== null && !playableRanks.has(card.rank)}
-                    wild={wildRanks.has(card.rank)}
-                    isNew={newKeys.has(key)}
-                    interactive={interactive}
-                    onTap={onTap}
-                  />
-                );
-              })}
-            </AnimatePresence>
+            <div className="relative" style={{ width: containerWidth, height: d.h }}>
+              <AnimatePresence>
+                {domOrder.map((card) => {
+                  const idx = cards.findIndex((c) => cardsEqual(c, card));
+                  if (idx === -1) return null;
+                  const key = cardKey(card);
+                  return (
+                    <HandCard
+                      key={key}
+                      card={card}
+                      idx={idx}
+                      step={step}
+                      lift={layout.lift}
+                      size={layout.handCard}
+                      selected={selectedKeys.has(key)}
+                      dimmed={playableRanks !== null && !playableRanks.has(card.rank)}
+                      wild={wildRanks.has(card.rank)}
+                      isNew={newKeys.has(key)}
+                      hidden={hiddenKeys.has(key)}
+                      target={targetAll}
+                      interactive={interactive}
+                      onTap={onTap}
+                    />
+                  );
+                })}
+              </AnimatePresence>
+            </div>
           </div>
         )}
       </div>

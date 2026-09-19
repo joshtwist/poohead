@@ -16,6 +16,10 @@ interface MyTableProps {
   selectedSlot: number | null;
   playableRanks: ReadonlySet<Rank> | null;
   wildRanks: ReadonlySet<Rank>;
+  /** Cards rendered invisibly while a flight animation stands in for them. */
+  hiddenKeys?: ReadonlySet<string>;
+  /** Swap phase: a hand card is selected, so the face-up cards are targets. */
+  targetFaceUp?: boolean;
   onTapFaceUp: (card: CardType) => void;
   onTapBlind: (slot: number) => void;
   you: { Icon: LucideIcon; colorClass: string; handCount: number; isOut: boolean };
@@ -23,6 +27,7 @@ interface MyTableProps {
 
 /** The back peeks out below the face-up card by this much. */
 const PEEK = 10;
+const NONE_SET: ReadonlySet<string> = new Set();
 
 /**
  * Your three table slots: a face-down card in each stable slot (until
@@ -41,22 +46,24 @@ export function MyTable({
   selectedSlot,
   playableRanks,
   wildRanks,
+  hiddenKeys = NONE_SET,
+  targetFaceUp = false,
   onTapFaceUp,
   onTapBlind,
   you,
 }: MyTableProps) {
   const size = layout.myTableCard;
   const d = CARD_DIMS[size];
-  const slotGap = layout.tier === "compact" ? 8 : 12;
+  const slotGap = layout.tier === "compact" ? 8 : size === "ml" ? 10 : 12;
 
   return (
     <div
       data-testid="my-table"
-      className="flex-shrink-0 flex items-center justify-center gap-4 tablet:gap-6 px-3"
+      className="flex-shrink-0 flex items-center justify-center gap-3 tablet:gap-6 px-2"
       style={{ minHeight: d.h + PEEK + 8 }}
     >
       {/* You */}
-      <div className="flex flex-col items-center gap-1 w-14 flex-shrink-0">
+      <div className="flex flex-col items-center gap-1 w-12 tablet:w-14 flex-shrink-0">
         <div
           className={`rounded-full flex items-center justify-center ${you.colorClass}`}
           style={{ width: layout.avatar, height: layout.avatar }}
@@ -64,7 +71,7 @@ export function MyTable({
           <you.Icon className="text-white" style={{ width: layout.avatar * 0.5, height: layout.avatar * 0.5 }} />
         </div>
         <div className="text-[11px] font-semibold text-white leading-tight">You</div>
-        <div className="text-[10px] text-slate-300/80 leading-tight" data-testid="my-hand-count">
+        <div className="text-[10px] text-slate-300/80 leading-tight text-center" data-testid="my-hand-count">
           {you.isOut ? "out" : `${you.handCount} in hand`}
         </div>
       </div>
@@ -76,6 +83,9 @@ export function MyTable({
           const card = faceUp[i];
           const blindSelectable = mode === "blind" && hasBack;
           const blindSelected = mode === "blind" && selectedSlot === i;
+          const key = card ? cardKey(card) : null;
+          const hidden = key !== null && hiddenKeys.has(key);
+          const selected = key !== null && selectedKeys.has(key);
           return (
             <div
               key={i}
@@ -105,24 +115,35 @@ export function MyTable({
               {card && (
                 <motion.div
                   className="absolute left-0 top-0"
-                  animate={{ y: selectedKeys.has(cardKey(card)) ? -8 : 0 }}
+                  data-target={targetFaceUp && !selected ? "true" : undefined}
+                  animate={{ y: selected ? -8 : 0 }}
                   transition={{ type: "spring", stiffness: 520, damping: 38 }}
                   style={{ zIndex: 2 }}
                 >
-                  <Card
-                    card={card}
-                    size={size}
-                    interactive={mode === "swap" || mode === "faceUp"}
-                    selected={selectedKeys.has(cardKey(card))}
-                    dimmed={
-                      mode === "faceUp" &&
-                      playableRanks !== null &&
-                      !playableRanks.has(card.rank)
-                    }
-                    wild={wildRanks.has(card.rank)}
-                    onClick={() => onTapFaceUp(card)}
-                    testId={`faceup-card-${cardKey(card)}`}
-                  />
+                  <div
+                    className={targetFaceUp && !selected && !hidden ? "pulse-gold" : ""}
+                    style={{
+                      opacity: hidden ? 0 : 1,
+                      // Hide instantly (a flying copy takes over), fade back in when it lands.
+                      transition: hidden ? "none" : "opacity 150ms ease-out",
+                      borderRadius: d.r,
+                    }}
+                  >
+                    <Card
+                      card={card}
+                      size={size}
+                      interactive={mode === "swap" || mode === "faceUp"}
+                      selected={selected}
+                      dimmed={
+                        mode === "faceUp" &&
+                        playableRanks !== null &&
+                        !playableRanks.has(card.rank)
+                      }
+                      wild={wildRanks.has(card.rank)}
+                      onClick={() => onTapFaceUp(card)}
+                      testId={`faceup-card-${cardKey(card)}`}
+                    />
+                  </div>
                 </motion.div>
               )}
             </div>

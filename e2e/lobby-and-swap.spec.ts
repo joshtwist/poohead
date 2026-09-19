@@ -34,6 +34,9 @@ test("lobby, deal, swap and ready gating", async ({ browser }) => {
     await expect(alice.page.getByTestId("deal-animation")).toBeVisible();
     await waitForSwapping(pages);
 
+    // The swap phase explains itself
+    await expect(alice.page.getByTestId("swap-callout")).toContainText("Set up your table");
+
     // 3 hand + 3 face-up + 3 face-down each
     await expectHandCount(alice.page, 3);
     await expect(alice.page.locator('[data-testid^="faceup-card-"]')).toHaveCount(3);
@@ -48,10 +51,22 @@ test("lobby, deal, swap and ready gating", async ({ browser }) => {
     await expect(handCard(alice.page, "2h")).toBeVisible();
     await handCard(alice.page, "2h").click({ position: { x: 12, y: 24 } });
     await expect(alice.page.getByTestId("action-hint")).toContainText("tap a face-up card");
+    // …and the three face-up cards light up as targets
+    await expect(alice.page.getByTestId("my-table").locator('[data-target="true"]')).toHaveCount(3);
     await faceUpCard(alice.page, "7d").click();
     await expect(faceUpCard(alice.page, "2h")).toBeVisible();
     await expect(handCard(alice.page, "7d")).toBeVisible();
     await expect(alice.page.locator('[data-testid^="faceup-card-"]')).toHaveCount(3);
+    // The two cards fly past each other, then settle fully opaque in place
+    await expect(alice.page.getByTestId("swap-flight")).toHaveCount(0);
+    await expect(faceUpCard(alice.page, "2h").locator("..")).toHaveCSS("opacity", "1");
+    await expect(handCard(alice.page, "7d").locator("> div").first()).toHaveCSS("opacity", "1");
+    await expect(alice.page.getByTestId("my-table").locator('[data-target="true"]')).toHaveCount(0);
+    // Table-first works too: every hand card becomes a target until you change your mind
+    await faceUpCard(alice.page, "9s").click();
+    await expect(handCard(alice.page, "3d")).toHaveAttribute("data-target", "true");
+    await faceUpCard(alice.page, "9s").click();
+    await expect(handCard(alice.page, "3d")).not.toHaveAttribute("data-target", "true");
     // Everyone sees the new face-up card
     await expect(bob.page.getByTestId(`opp-faceup-Alice-${key("2h")}`)).toBeVisible();
 

@@ -277,6 +277,17 @@ export async function expectBanner(page: Page, kind: string, timeout = 6_000): P
   ).toBeVisible({ timeout });
 }
 
+/** Board-wide emoji showers (💩 on a pick-up, 🎉 on going out) last ~3s. */
+export async function expectRain(
+  page: Page,
+  kind: "poo" | "confetti",
+  timeout = 6_000,
+): Promise<void> {
+  await expect(
+    page.locator(`[data-testid="emoji-rain"][data-kind="${kind}"]`),
+  ).toBeVisible({ timeout });
+}
+
 export async function expectHandCount(page: Page, n: number): Promise<void> {
   await expect(page.getByTestId("player-hand")).toHaveAttribute("data-count", String(n));
 }

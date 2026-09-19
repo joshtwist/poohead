@@ -7,6 +7,7 @@ import {
   expectMyTurn,
   expectNotMyTurn,
   expectPileCount,
+  expectRain,
   expectRequirement,
   expectStockCount,
   forceState,
@@ -71,6 +72,10 @@ test.describe("playing from the hand", () => {
       await expect(bob.page.getByTestId("action-hint")).toContainText("pick up");
 
       await pickUp(bob.page);
+      // 💩 rains on every screen, and Bob's tile tells Alice how many he took
+      await expectRain(bob.page, "poo");
+      await expectRain(alice.page, "poo");
+      await expect(alice.page.getByTestId("opponent-Bob-badge")).toHaveText("+3 💩");
       await expectHandCount(bob.page, 5);
       await expectPileCount(alice.page, 0);
       await expectBanner(alice.page, "pickup");

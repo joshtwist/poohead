@@ -62,7 +62,7 @@ body {
   display: none;
 }
 
-/* 💩 rain on the end screen */
+/* Emoji rain: 💩 for pick-ups and the end screen, 🎉 for going out */
 @keyframes poo-fall {
   0% {
     transform: translateY(-10vh) rotate(0deg);
@@ -76,17 +76,22 @@ body {
     opacity: 0.9;
   }
 }
-.poo-drop {
+.emoji-drop {
   position: absolute;
   top: 0;
   animation-name: poo-fall;
   animation-timing-function: linear;
   animation-iteration-count: infinite;
+  /* `both` keeps a drop invisible while it waits for its delay */
+  animation-fill-mode: both;
   pointer-events: none;
   will-change: transform;
 }
+.emoji-drop.emoji-burst {
+  animation-iteration-count: 1;
+}
 @media (prefers-reduced-motion: reduce) {
-  .poo-drop {
+  .emoji-drop {
     animation: none;
     top: 40%;
     opacity: 0.6;

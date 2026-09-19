@@ -1,8 +1,9 @@
+import { useRef } from "react";
 import { motion } from "framer-motion";
 import { Check, WifiOff } from "lucide-react";
 import type { GamePhase } from "../../shared/types.ts";
 import { TABLE_SIZE, cardKey } from "../../shared/types.ts";
-import type { PlayerView } from "../../shared/protocol.ts";
+import type { GameEvent, PlayerView } from "../../shared/protocol.ts";
 import { ICON_MAP, ICON_COLORS } from "../lib/icons.ts";
 import { ordinal } from "../lib/format.ts";
 import { Card, CardGhost } from "./Card.tsx";
@@ -14,6 +15,26 @@ interface OpponentsAreaProps {
   currentPlayerId: string | null;
   phase: GamePhase;
   layout: Layout;
+  /** Drives the little "+12 💩" badge over the tile of whoever just acted. */
+  lastEvent: GameEvent | null;
+}
+
+/** Short reaction shown over an opponent's tile for their latest event. */
+function badgeFor(event: GameEvent | null, playerId: string): string | null {
+  if (!event || event.playerId !== playerId) return null;
+  switch (event.kind) {
+    case "pickup":
+      return `+${event.count} 💩`;
+    case "flip_fail":
+      return `+${event.pickedUp} 💩`;
+    case "play":
+    case "flip":
+      if (event.wentOut) return "out! 🎉";
+      if (event.burned) return "burn 🔥";
+      return null;
+    default:
+      return null;
+  }
 }
 
 /**
@@ -28,14 +49,19 @@ export function OpponentsArea({
   currentPlayerId,
   phase,
   layout,
+  lastEvent,
 }: OpponentsAreaProps) {
+  // Only react to events that happen while we're on screen — a reload
+  // shouldn't replay the last badge.
+  const mountSeqRef = useRef(lastEvent?.seq ?? 0);
+  const liveEvent = lastEvent && lastEvent.seq > mountSeqRef.current ? lastEvent : null;
   const opponents = players
     .map((p, i) => ({ player: p, colorIndex: i }))
     .filter(({ player }) => player.playerId !== selfId);
 
   return (
     <div
-      className="flex-shrink-0 flex justify-center items-start gap-2 compact:gap-1.5 tablet:gap-6 px-2 pt-2 pb-1 flex-nowrap"
+      className="flex-shrink-0 flex justify-center items-start gap-2 compact:gap-1.5 tablet:gap-6 px-2 pt-3 compact:pt-2 pb-1 flex-nowrap"
       data-testid="player-bar"
     >
       {opponents.map(({ player, colorIndex }) => (
@@ -46,6 +72,8 @@ export function OpponentsArea({
           isActive={currentPlayerId === player.playerId}
           phase={phase}
           layout={layout}
+          badge={badgeFor(liveEvent, player.playerId)}
+          badgeKey={liveEvent?.seq ?? 0}
         />
       ))}
     </div>
@@ -58,12 +86,16 @@ function OpponentTile({
   isActive,
   phase,
   layout,
+  badge,
+  badgeKey,
 }: {
   player: PlayerView;
   colorClass: string;
   isActive: boolean;
   phase: GamePhase;
   layout: Layout;
+  badge: string | null;
+  badgeKey: number;
 }) {
   const Icon = ICON_MAP[player.icon];
   const size = layout.oppCard;
@@ -77,10 +109,22 @@ function OpponentTile({
       data-opponent-tile
       data-connected={player.connected ? "true" : "false"}
       data-out={player.isOut ? "true" : undefined}
-      className={`flex flex-col items-center gap-1 flex-shrink-0 transition-opacity ${
+      className={`relative flex flex-col items-center gap-1 flex-shrink-0 transition-opacity ${
         !player.connected ? "opacity-50" : ""
       } ${player.isOut ? "opacity-70" : ""}`}
     >
+      {badge && (
+        <motion.div
+          key={badgeKey}
+          data-testid={`opponent-${player.name}-badge`}
+          className="absolute top-1 left-1/2 z-10 px-2 py-0.5 rounded-full bg-slate-900/90 border border-white/15 text-[11px] font-bold text-white whitespace-nowrap pointer-events-none"
+          initial={{ opacity: 0, y: 6, x: "-50%", scale: 0.7 }}
+          animate={{ opacity: [0, 1, 1, 0], y: [10, -4, -8, -20], x: "-50%", scale: [0.7, 1.15, 1, 1] }}
+          transition={{ duration: 2.4, times: [0, 0.15, 0.75, 1] }}
+        >
+          {badge}
+        </motion.div>
+      )}
       {/* Avatar + name */}
       <div className="flex items-center gap-1.5">
         <div className="relative">

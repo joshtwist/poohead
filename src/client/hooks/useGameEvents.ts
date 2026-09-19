@@ -20,30 +20,43 @@ export interface Banner {
   durationMs: number;
 }
 
-interface Queued {
-  banners: Banner[];
-  flash: TableFlash | null;
+/** A board-wide emoji shower: 💩 when someone picks up, 🎉 when someone goes out. */
+export interface RainEffect {
+  seq: number;
+  kind: "poo" | "confetti";
+  count: number;
 }
 
+interface Described {
+  banners: Banner[];
+  flash: TableFlash | null;
+  effect: RainEffect | null;
+}
+
+const EFFECT_MS = 3000;
+const FLASH_MS = 1200;
+
 /**
- * Turns `state.lastEvent` into banners, haptics and a table flash.
+ * Turns `state.lastEvent` into banners, haptics, a table flash and a
+ * board-wide effect.
  *
  * Dedupe: the last seen seq is kept in a ref AND in sessionStorage, so a
  * reload/reconnect (which re-delivers the same state) doesn't replay the
  * banner, while a brand-new tab still gets the "X starts" banner. Events
- * can arrive back-to-back (flip → play → burn), so they queue.
+ * can arrive back-to-back (flip → play → burn), so banners queue.
  */
 export function useGameEvents(
   state: StateMessage,
   selfId: string,
   gameId: string,
-): { banner: Banner | null; flash: TableFlash | null } {
+): { banner: Banner | null; flash: TableFlash | null; effect: RainEffect | null } {
   const seenRef = useRef<number | null>(null);
   if (seenRef.current === null) seenRef.current = getLastSeenSeq(gameId);
 
   const [queue, setQueue] = useState<Banner[]>([]);
   const [current, setCurrent] = useState<Banner | null>(null);
   const [flash, setFlash] = useState<TableFlash | null>(null);
+  const [effect, setEffect] = useState<RainEffect | null>(null);
 
   const event = state.lastEvent;
   const seq = event?.seq ?? 0;
@@ -53,9 +66,10 @@ export function useGameEvents(
     seenRef.current = seq;
     setLastSeenSeq(gameId, seq);
 
-    const { banners, flash: newFlash } = describe(event, state, selfId);
-    if (banners.length > 0) setQueue((q) => [...q, ...banners]);
-    if (newFlash) setFlash(newFlash);
+    const described = describe(event, state, selfId);
+    if (described.banners.length > 0) setQueue((q) => [...q, ...described.banners]);
+    if (described.flash) setFlash(described.flash);
+    if (described.effect) setEffect(described.effect);
     buzz(event, selfId);
     // `state` is only read for names; keying on seq is intentional.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -77,14 +91,19 @@ export function useGameEvents(
     return () => clearTimeout(t);
   }, [current]);
 
-  // Clear the flash after its animation.
   useEffect(() => {
     if (!flash) return;
-    const t = setTimeout(() => setFlash(null), 1200);
+    const t = setTimeout(() => setFlash(null), FLASH_MS);
     return () => clearTimeout(t);
   }, [flash]);
 
-  return { banner: current, flash };
+  useEffect(() => {
+    if (!effect) return;
+    const t = setTimeout(() => setEffect(null), EFFECT_MS);
+    return () => clearTimeout(t);
+  }, [effect]);
+
+  return { banner: current, flash, effect };
 }
 
 function nameOf(state: StateMessage, playerId: string, selfId: string): string {
@@ -92,11 +111,17 @@ function nameOf(state: StateMessage, playerId: string, selfId: string): string {
   return state.players.find((p) => p.playerId === playerId)?.name ?? "Someone";
 }
 
-function describe(event: GameEvent, state: StateMessage, selfId: string): Queued {
+/** How heavy the 💩 shower is for a pick-up of `n` cards. */
+function pooCount(n: number): number {
+  return Math.min(44, 10 + n * 2);
+}
+
+function describe(event: GameEvent, state: StateMessage, selfId: string): Described {
   const me = event.playerId === selfId;
   const who = nameOf(state, event.playerId, selfId);
   const banners: Banner[] = [];
   let flash: TableFlash | null = null;
+  let effect: RainEffect | null = null;
   const key = (suffix: string) => `${event.seq}-${suffix}`;
 
   switch (event.kind) {
@@ -155,6 +180,7 @@ function describe(event: GameEvent, state: StateMessage, selfId: string): Queued
       }
       if (event.wentOut) {
         const place = state.finishedOrder.indexOf(event.playerId) + 1;
+        effect = { seq: event.seq, kind: "confetti", count: me ? 30 : 16 };
         banners.push({
           key: key("out"),
           kind: "out",
@@ -178,6 +204,7 @@ function describe(event: GameEvent, state: StateMessage, selfId: string): Queued
     }
     case "flip_fail": {
       flash = { seq: event.seq, kind: "flip_fail" };
+      effect = { seq: event.seq, kind: "poo", count: pooCount(event.pickedUp) };
       banners.push({
         key: key("flipfail"),
         kind: "flip_fail",
@@ -191,6 +218,7 @@ function describe(event: GameEvent, state: StateMessage, selfId: string): Queued
     }
     case "pickup": {
       flash = { seq: event.seq, kind: "pickup" };
+      effect = { seq: event.seq, kind: "poo", count: pooCount(event.count) };
       banners.push({
         key: key("pickup"),
         kind: "pickup",
@@ -203,7 +231,7 @@ function describe(event: GameEvent, state: StateMessage, selfId: string): Queued
       break;
     }
   }
-  return { banners, flash };
+  return { banners, flash, effect };
 }
 
 function buzz(event: GameEvent, selfId: string): void {

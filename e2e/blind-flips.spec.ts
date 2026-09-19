@@ -7,6 +7,7 @@ import {
   expectHandCount,
   expectMyTurn,
   expectPileCount,
+  expectRain,
   expectRequirement,
   flipSlot,
   forceState,
@@ -50,6 +51,8 @@ test("blind flips, burn, going out, end screen and rematch", async ({ browser })
     // A 4 can't beat a 9: Alice takes the pile and the turn passes
     await flipSlot(alice.page, 0);
     await expectBanner(bob.page, "flip_fail");
+    await expectRain(bob.page, "poo");
+    await expect(bob.page.getByTestId("opponent-Alice-badge")).toHaveText(/^\+\d+ 💩$/);
     await expectHandCount(alice.page, 2); // 4h + 9c
     await expectPileCount(alice.page, 0);
     await expect(alice.page.getByTestId("empty-slot-0")).toBeVisible();
@@ -74,6 +77,8 @@ test("blind flips, burn, going out, end screen and rematch", async ({ browser })
 
     // Last card on an empty pile: Alice is out, Bob is the 💩head
     await flipSlot(alice.page, 2);
+    // Going out gets confetti on the way to the end screen
+    await expectRain(alice.page, "confetti");
     await expect(bob.page.getByTestId("poohead-banner")).toBeVisible({ timeout: 15_000 });
     await expect(bob.page.getByTestId("poohead-banner")).toHaveText("You're the 💩head!");
     await expect(alice.page.getByTestId("poohead-banner")).toHaveText("Bob is the 💩head!");
