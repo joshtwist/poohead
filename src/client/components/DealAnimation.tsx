@@ -42,7 +42,7 @@ export function DealAnimation({ state }: DealAnimationProps) {
 
   // Percent positions: opponents across the top, you at the bottom.
   const positions = players.map((_, i) => {
-    if (i === selfIndex) return { x: 50, y: layout.sideBySide ? 68 : 72 };
+    if (i === selfIndex) return { x: 50, y: layout.sideBySide ? 70 : 78 };
     const k = i < selfIndex ? i : i - 1;
     const x = others <= 1 ? 50 : 14 + (72 * k) / (others - 1);
     return { x, y: 24 };
@@ -64,7 +64,7 @@ export function DealAnimation({ state }: DealAnimationProps) {
             className="absolute flex flex-col items-center gap-1 -translate-x-1/2"
             style={{
               left: `${pos.x}%`,
-              top: `calc(${pos.y}% - ${d.h / 2 + layout.avatar + 22}px)`,
+              top: `calc(${pos.y}% - ${d.h / 2 + layout.avatar + 30}px)`,
             }}
           >
             <div
@@ -81,7 +81,7 @@ export function DealAnimation({ state }: DealAnimationProps) {
       })}
 
       {/* Flying cards */}
-      <div className="absolute inset-0 pointer-events-none">
+      <div className="absolute inset-0 pointer-events-none z-10">
         {Array.from({ length: dealt }).map((_, i) => {
           const round = Math.floor(i / n);
           const pIdx = i % n;
@@ -123,7 +123,10 @@ export function DealAnimation({ state }: DealAnimationProps) {
       </div>
 
       {/* Status text */}
-      <div className="absolute left-1/2 -translate-x-1/2 text-center pointer-events-none" style={{ top: "calc(50% + 100px)" }}>
+      <div
+        className="absolute left-1/2 -translate-x-1/2 text-center pointer-events-none"
+        style={{ top: `calc(50% + ${CARD_DIMS[layout.tableCard].h / 2 + 14}px)` }}
+      >
         <motion.div
           animate={{ opacity: [0.5, 1, 0.5] }}
           transition={{ duration: 1.5, repeat: Infinity }}

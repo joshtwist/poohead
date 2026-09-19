@@ -308,7 +308,7 @@ export function GameBoard({ state, gameId, send, errorSeq }: GameBoardProps) {
           ? "Now tap a face-up card on your table to swap"
           : selection.kind === "swapFaceUp"
             ? "Now tap a card in your hand to swap"
-            : "Tap a hand card, then a table card to swap them. Happy? Tap Ready.",
+            : "Tap a hand card, then a table card to swap. Done? Tap Ready.",
     };
   } else if (phase === "complete") {
     actionModel = {
@@ -504,7 +504,7 @@ export function GameBoard({ state, gameId, send, errorSeq }: GameBoardProps) {
 
       <ActionBar model={actionModel} layout={layout} />
 
-      <EventBanner banner={banner} />
+      <EventBanner banner={banner} position={layout.sideBySide ? "high" : "table"} />
 
       {showRotate && (
         <div

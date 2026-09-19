@@ -5,9 +5,20 @@ import type { Banner } from "../hooks/useGameEvents.ts";
  * Short-lived pill announcing what just happened (burn, pick-up, skip,
  * someone going out…). Overlaid on the table so it costs no layout.
  */
-export function EventBanner({ banner }: { banner: Banner | null }) {
+export function EventBanner({
+  banner,
+  position = "table",
+}: {
+  banner: Banner | null;
+  /** "table" floats over the stock/pile; "high" sits just under the status row (side-by-side layouts). */
+  position?: "table" | "high";
+}) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-[38%] flex justify-center z-40 px-4">
+    <div
+      className={`pointer-events-none absolute inset-x-0 flex justify-center z-40 px-4 ${
+        position === "high" ? "top-[22%]" : "top-[38%]"
+      }`}
+    >
       <AnimatePresence mode="wait">
         {banner && (
           <motion.div

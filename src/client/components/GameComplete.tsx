@@ -149,7 +149,7 @@ export function GameComplete({
               </div>
               <div className="flex flex-wrap justify-center gap-1.5">
                 {leftover.map((card, i) => (
-                  <Card key={`${card.suit}-${card.rank}-${i}`} card={card} size="sm" />
+                  <Card key={`${card.suit}-${card.rank}-${i}`} card={card} size="sm" testId="poohead-card" />
                 ))}
               </div>
             </div>

@@ -1,148 +1,100 @@
-# Rummy
+# 💩head
 
-Multiplayer Rummy card game. Real-time, 2–4 players, runs entirely on
-Cloudflare Workers + Durable Objects.
+A link-to-play version of the card game Shithead (also known as Karma or
+Palace) for 2–5 players, built for phones and iPads. No accounts, no
+installs: one person creates a game, shares the link, everyone plays in
+the browser. Part of the [playcards.free](https://playcards.free) family,
+live at **https://poohead.playcards.free**.
 
-## Stack
+Descended from [joshtwist/rummy](https://github.com/joshtwist/rummy): the
+same Cloudflare Worker + Durable Object engine, React client and share-a-
+link flow, with the rules module and the whole table UI swapped out.
 
-- **Frontend** — React 19, Vite, Tailwind CSS, Framer Motion
-- **Backend** — Cloudflare Workers with a `GameRoom` Durable Object per
-  game (holds state, brokers WebSockets, uses the Hibernation API so
-  idle games cost nothing)
-- **Transport** — WebSockets for game state; HTTP only for the initial
-  asset load
-- **Tests** — Playwright (desktop Chrome + iPhone viewport)
+## How to play
 
-One Worker serves both the SPA (via the `[assets]` binding) and the
-game API. No separate frontend host.
+Everyone gets three **face-down** cards, three **face-up** cards on top of
+them, and three cards in **hand**. Before play starts you may swap hand
+cards with your face-up cards, then tap **Ready**.
 
-## How the game works
+- On your turn play one or more cards of the **same rank** that beat the
+  pile, or **pick up** the whole pile into your hand.
+- You play from your hand first, then your face-up cards, and finally your
+  face-down cards — flipped blind, one at a time. If a blind card can't be
+  played you take the pile.
+- While the stock lasts you draw back up to three cards in hand.
+- A **2** can be played on anything and resets the pile. A **10** can be
+  played on anything and **burns** the pile (so does four of a kind on
+  top) — you go again.
+- No cards left in any of the three places and you're out. The last player
+  still holding cards is the **💩head**.
 
-- **Modes** — 7-card (fast) or 10-card (classic). First player to
-  arrange their entire hand into valid Rummy melds and discard one card
-  wins.
-- **Melds** — Sets (3–4 same rank, different suits) or runs (3+
-  consecutive same suit, Aces low). Win detection does a backtracking
-  partition so overlapping meld options don't trip it up.
-- **State machine** — `lobby → dealing → playing → complete`. A
-  completed game becomes a pointer to the rematch lobby: the winner
-  clicks "Create New Game" and other players see a "Join X's New Game"
-  button at their leisure.
+Ranks run 3 < 4 < … < 9 < J < Q < K < A. Suits never matter.
 
-## Local development
+### Rule sets
+
+The host picks one in the lobby.
+
+| | Standard | UK pub | Millybims (default) |
+|---|---|---|---|
+| 2 resets, 10 burns, four of a kind burns | ✓ | ✓ | ✓ |
+| 3 | — | invisible: play on anything, next player faces the card beneath | — |
+| 7 | — | next player must play 7 or lower | wild; next player must play equal or lower than the card the 7 landed on (7 on empty → 7 or lower, 7 on a 2 → anything) |
+| 8 | — | skips the next player (two 8s skip two) | invisible: play on anything, the next player faces exactly what you faced |
+
+`src/shared/rules.ts` holds the presets and the pure functions that turn a
+pile into a requirement; the same code runs on the server (to validate)
+and in the client (to highlight playable cards).
+
+## Development
 
 ```bash
 pnpm install
-pnpm start     # runs Vite (:5173) + wrangler dev (:8787) concurrently
+pnpm start          # vite on :5173 + wrangler dev on :8787
 ```
 
-Open `http://localhost:5173`. Vite proxies `/api/*` and WebSocket
-upgrades to the Worker on 8787, mirroring the production routing.
+Open http://localhost:5173, create a game, then open the game link in a
+second browser profile (or an incognito window — each needs its own
+localStorage) to join as a second player.
 
-### Dev env vars
+| Command | What it does |
+|---|---|
+| `pnpm typecheck` | Type-checks the client and the Worker |
+| `pnpm test:unit` | Vitest: rules + engine (deterministic decks, random full games with invariants) |
+| `pnpm test` | Playwright end-to-end on iPhone, iPhone SE, iPad portrait, iPad landscape and desktop |
+| `pnpm test e2e/screenshot.spec.ts` | Captures each screen per viewport into `e2e/screenshots/` |
+| `pnpm build` | Production build into `dist/` |
 
-Put dev-only variables in `.dev.vars` (gitignored, loaded by
-`wrangler dev`, never deployed). The project uses one:
+The e2e specs reach specific positions through a `_test_force` WebSocket
+message that the Worker only honours when `TEST_HOOKS=1` (set in
+`.dev.vars`, never in production).
 
-```
-TEST_HOOKS=1
-```
-
-This gates a server-side `_test_force_hand` WebSocket message that the
-Playwright suite uses to deal a known winning hand. With `TEST_HOOKS`
-unset (i.e. production), the hook is inert.
-
-### Useful scripts
-
-| Command              | What it does                                              |
-|----------------------|-----------------------------------------------------------|
-| `pnpm start`         | Vite + wrangler dev in parallel                           |
-| `pnpm dev`           | Vite only                                                 |
-| `pnpm dev:worker`    | `wrangler dev` only                                       |
-| `pnpm build`         | Build the SPA into `dist/`                                |
-| `pnpm typecheck`     | TypeScript check for both client and Worker configs       |
-| `pnpm types`         | Regenerate `worker-configuration.d.ts` from `wrangler.toml` |
-| `pnpm test`          | Playwright end-to-end suite                               |
-| `pnpm test:ui`       | Playwright interactive UI                                 |
-| `pnpm deploy`        | `pnpm build && wrangler deploy`                           |
-
-After cloning, run `pnpm types` once to regenerate the Worker types
-file that's gitignored.
-
-## Tests
-
-```bash
-pnpm test
-```
-
-Covers the full game loop end-to-end: create room, join, start, draw,
-discard, reconnect under WebSocket drops, force a winning hand, see
-the GameComplete screen on both clients, create a rematch, join it
-from the other client.
-
-Two Playwright projects run the same specs: one desktop viewport, one
-iPhone 14 Pro viewport with touch events and a mobile UA — the game is
-phone-first, so mobile layout + touch drag are first-class in CI.
-
-## Deployment (Cloudflare Workers)
-
-One command does everything:
-
-```bash
-pnpm deploy
-```
-
-That builds the SPA, uploads the Worker + static assets, and runs the
-Durable Object migration declared in `wrangler.toml`. First deploy
-gives you a free `*.workers.dev` URL. A custom domain can be attached
-in the Cloudflare dashboard afterwards.
-
-First-time setup:
-
-```bash
-pnpm wrangler login
-```
-
-### Automatic deploys
-
-`.github/workflows/deploy.yml` deploys on every push to `main`. It
-also exposes a `workflow_dispatch` trigger so you can deploy any
-branch manually from the Actions tab.
-
-To enable it, add two repo secrets under Settings → Secrets and
-variables → Actions:
-
-- `CLOUDFLARE_API_TOKEN` — create at Cloudflare dashboard → My Profile
-  → API Tokens → **Create Token** → use the **Edit Cloudflare Workers**
-  template → optionally narrow the Account Resources to just this
-  account → Continue → Create. That scoped token covers Workers,
-  Durable Objects, and static assets.
-- `CLOUDFLARE_ACCOUNT_ID` — shown on the right column of any
-  Workers & Pages page in the dashboard, or at the bottom of the
-  account home page.
-
-## Project layout
+## Architecture
 
 ```
-src/
-  client/              React SPA
-    components/        Game UI (PlayerHand, GameComplete, etc.)
-    hooks/             useWebSocket
-    lib/               icons, haptics, storage, celebrations
-  server/
-    index.ts           Worker entry — routes /api/* to the DO
-    game-room.ts       GameRoom DO (state + WS broker)
-    game-engine.ts     Pure game state reducers
-    deck.ts            Deck, shuffle, deal, scoring
-    melds.ts           Set/run detection + hand partition
-  shared/              Types + wire protocol shared by client & server
-
-e2e/                   Playwright specs and helpers
-wrangler.toml          Worker + DO + assets binding
+src/shared/     types, rules presets + requirement logic, wire protocol
+src/server/     Worker entry, GameRoom Durable Object, pure game engine
+src/client/     React app (Vite, Tailwind 4, Framer Motion)
+e2e/            Playwright specs + helpers
 ```
 
-Server state is pure: `game-engine.ts` exports reducer-shaped functions
-(`addPlayer`, `drawCard`, `discardCard`, ...) that take a `GameState`
-and return the next one. The DO owns the only mutable instance and
-handles WebSockets + persistence. This makes the engine trivially
-unit-testable and keeps WS/storage plumbing out of the game rules.
+- **One Durable Object per game.** `GameRoom` holds the full state under a
+  single storage key, tags each hibernating WebSocket with its playerId,
+  and after every mutation saves and broadcasts a personalised
+  `StateMessage` to every connection (face-down cards are never sent
+  until the game is over).
+- **Pure engine.** `src/server/game-engine.ts` is a set of
+  `(state, …) => state` reducers that throw player-facing errors; the DO
+  turns them into `{ type: "error" }` messages.
+- **Responsive board.** `src/client/lib/layout.ts` computes a layout tier
+  from the viewport (`compact`, `phone`, `tablet`, `tabletWide`) and the
+  board sizes every card from it, so the table never scrolls vertically
+  on a phone or an iPad. A long hand compresses, then scrolls
+  horizontally.
+
+## Deployment
+
+Pushes to `main` run `.github/workflows/deploy.yml`: typecheck → unit
+tests → build → `wrangler deploy`. The workflow needs two repository
+secrets: `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+`wrangler.toml` binds the Worker to the custom domain
+`poohead.playcards.free` on the existing zone.

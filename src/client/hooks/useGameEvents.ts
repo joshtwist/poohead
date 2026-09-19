@@ -61,15 +61,21 @@ export function useGameEvents(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seq, event, gameId, selfId]);
 
-  // Promote the next queued banner when the current one expires.
+  // Promote the next queued banner when the current one expires…
   useEffect(() => {
     if (current || queue.length === 0) return;
-    const [head, ...rest] = queue;
-    setCurrent(head);
-    setQueue(rest);
-    const t = setTimeout(() => setCurrent(null), head.durationMs);
-    return () => clearTimeout(t);
+    setCurrent(queue[0]);
+    setQueue((q) => q.slice(1));
   }, [current, queue]);
+
+  // …and expire the current one. Kept separate from the effect above:
+  // if the timer lived there, the queue update would re-run the effect
+  // and its cleanup would cancel the timer before it fired.
+  useEffect(() => {
+    if (!current) return;
+    const t = setTimeout(() => setCurrent(null), current.durationMs);
+    return () => clearTimeout(t);
+  }, [current]);
 
   // Clear the flash after its animation.
   useEffect(() => {

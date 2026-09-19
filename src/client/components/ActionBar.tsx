@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { Check, Hand, Play, RotateCcw, Zap } from "lucide-react";
 import type { Layout } from "../lib/layout.ts";
 
@@ -119,21 +118,19 @@ export function ActionBar({ model, layout }: ActionBarProps) {
               <Play className="w-5 h-5" fill="currentColor" />
               {model.playLabel}
             </button>
-            <motion.button
+            <button
               data-testid="pickup-btn"
               data-armed={model.pickupArmed ? "true" : undefined}
               onClick={model.onPickUp}
               disabled={!model.canPickUp}
-              animate={model.pickupPrimary ? { scale: [1, 1.04, 1] } : { scale: 1 }}
-              transition={model.pickupPrimary ? { duration: 1.2, repeat: Infinity } : undefined}
               className={`${btnBase} ${model.pickupPrimary || model.pickupArmed ? DANGER : SECONDARY} ${
-                model.pickupPrimary ? "flex-1" : ""
+                model.pickupPrimary ? "flex-1 pulse-gold" : ""
               }`}
               style={{ height: h }}
             >
               <Hand className="w-5 h-5" />
               {model.pickupArmed ? "Really pick up?" : model.pickupLabel}
-            </motion.button>
+            </button>
           </>
         )}
 

@@ -74,6 +74,9 @@ function OpponentTile({
   return (
     <div
       data-testid={`opponent-${player.name}`}
+      data-opponent-tile
+      data-connected={player.connected ? "true" : "false"}
+      data-out={player.isOut ? "true" : undefined}
       className={`flex flex-col items-center gap-1 flex-shrink-0 transition-opacity ${
         !player.connected ? "opacity-50" : ""
       } ${player.isOut ? "opacity-70" : ""}`}
