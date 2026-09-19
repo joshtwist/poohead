@@ -30,7 +30,7 @@ export function JoinForm({ playerId, send, takenIcons = [] }: JoinFormProps) {
   const canSubmit = name.trim().length > 0 && icon !== null && !joining;
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-6">
+    <div className="flex flex-1 min-h-0 flex-col items-center justify-center px-6 overflow-y-auto">
       <form
         onSubmit={handleSubmit}
         className="flex flex-col gap-6 max-w-sm w-full"

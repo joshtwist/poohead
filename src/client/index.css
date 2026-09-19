@@ -4,29 +4,105 @@
   --color-felt: #1b3726;
   --color-felt-light: #245a38;
   --color-felt-active: #245a35;
+  --color-felt-deep: #12261a;
   --color-card-red: #c0392b;
   --color-card-black: #1a1a2e;
   --color-gold: #f59e0b;
+  --color-poo: #7b4a2d;
+  --color-poo-light: #a86a43;
   --color-card-blue: #1e3a8a;
   --color-card-blue-light: #2a4fae;
   --color-card-blue-dark: #152a63;
   --color-card-shadow: rgba(0, 0, 0, 0.22);
 }
 
-/* Prevent pull-to-refresh and overscroll on mobile */
+/*
+ * Layout tiers. GameBoard sets data-tier from the viewport (see
+ * lib/layout.ts); these variants let the board's spacing follow the same
+ * decision as its pixel maths, instead of a separate CSS breakpoint.
+ */
+@custom-variant compact (&:where([data-tier="compact"], [data-tier="compact"] *));
+@custom-variant tablet (&:where([data-tier="tablet"], [data-tier="tablet"] *, [data-tier="tabletWide"], [data-tier="tabletWide"] *));
+
+/* Prevent pull-to-refresh, overscroll and double-tap zoom on touch devices */
 html,
 body {
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Safe area insets for notched devices */
+/*
+ * The app is a single fixed-height shell: the game board must never
+ * scroll vertically. Screens that need to scroll (lobby, join, end)
+ * own their own overflow-y-auto.
+ */
 #root {
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
-  min-height: 100dvh;
+  height: 100dvh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.game-board {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Horizontal scrollers (the hand) hide their scrollbar. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* 💩 rain on the end screen */
+@keyframes poo-fall {
+  0% {
+    transform: translateY(-10vh) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(110vh) rotate(360deg);
+    opacity: 0.9;
+  }
+}
+.poo-drop {
+  position: absolute;
+  top: 0;
+  animation-name: poo-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  pointer-events: none;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .poo-drop {
+    animation: none;
+    top: 40%;
+    opacity: 0.6;
+  }
+}
+
+/* Pulsing glow for "this is playable right now" */
+@keyframes pulse-ring {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
+  }
+}
+.pulse-gold {
+  animation: pulse-ring 1.4s ease-out infinite;
 }

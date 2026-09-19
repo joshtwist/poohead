@@ -5,9 +5,14 @@ import {
   useLocation,
   Navigate,
 } from "react-router-dom";
-import type { PlayerIcon } from "../../shared/types.ts";
+import type { GamePhase, PlayerIcon } from "../../shared/types.ts";
 import { getPlayerId, setPlayerId } from "../lib/storage.ts";
-import { vibrateTurn, vibrateError, vibrateWin } from "../lib/haptics.ts";
+import {
+  vibrateTurn,
+  vibrateError,
+  vibrateWin,
+  vibrateLoss,
+} from "../lib/haptics.ts";
 import { useWebSocket } from "../hooks/useWebSocket.ts";
 import { useGameState } from "../hooks/useGameState.ts";
 import { JoinForm } from "./JoinForm.tsx";
@@ -23,6 +28,9 @@ interface AutoJoin {
   icon: PlayerIcon;
 }
 
+/** How long the final table stays visible before the end screen. */
+const END_HOLD_MS = 2600;
+
 /**
  * Top-level container for a single game room.
  *
@@ -30,7 +38,7 @@ interface AutoJoin {
  * - Manages the WebSocket lifecycle.
  * - Routes to the appropriate child component based on phase.
  * - Handles redirect-on-play-again (with auto-join for the new game).
- * - Drives haptic feedback hooks (turn start, error, win).
+ * - Drives haptic feedback hooks (turn start, error, win/loss).
  *
  * Owns NO game logic -- pure orchestration.
  */
@@ -79,7 +87,7 @@ function GameRoomInner({
     return { playerId: fresh, isReturning: false };
   });
 
-  const { state, dealing, gameComplete, lobbyInfo, error, processMessage } =
+  const { state, gameComplete, lobbyInfo, error, errorSeq, processMessage } =
     useGameState();
   const { send, connected, failed, retry } = useWebSocket(
     gameId,
@@ -104,7 +112,7 @@ function GameRoomInner({
   }, [state]);
 
   // Navigate into a rematch, carrying the player's name + icon so the
-  // new room's JoinForm auto-submits. Triggered from the win-screen
+  // new room's JoinForm auto-submits. Triggered from the end-screen
   // button (or, for the rematch creator, auto-fired when state.rematch
   // flips from null to set — see GameComplete.tsx).
   function handleJoinRematch(rematch: RematchInfoView) {
@@ -154,12 +162,28 @@ function GameRoomInner({
     if (error) vibrateError();
   }, [error]);
 
-  // Haptic: you won
+  // Haptic: game over — a sad buzz for the 💩head, a cheer for the rest
   useEffect(() => {
-    if (gameComplete && gameComplete.winnerId === playerId) {
-      vibrateWin();
-    }
+    if (!gameComplete) return;
+    if (gameComplete.pooheadId === playerId) vibrateLoss();
+    else vibrateWin();
   }, [gameComplete, playerId]);
+
+  // When the last card lands, keep the table on screen for a moment so
+  // everyone sees how it ended before the 💩head screen takes over.
+  // (A reload of a finished game goes straight to the end screen.)
+  const prevPhaseRef = useRef<GamePhase | null>(null);
+  const [holdBoard, setHoldBoard] = useState(false);
+  const phase = state?.phase ?? null;
+  useEffect(() => {
+    const prev = prevPhaseRef.current;
+    prevPhaseRef.current = phase;
+    if (phase === "complete" && prev === "playing") {
+      setHoldBoard(true);
+      const t = setTimeout(() => setHoldBoard(false), END_HOLD_MS);
+      return () => clearTimeout(t);
+    }
+  }, [phase]);
 
   // ── Render ──────────────────────────────────────────────────────
 
@@ -227,6 +251,11 @@ function GameRoomInner({
     );
   }
 
+  const showBoard =
+    state.phase === "swapping" ||
+    state.phase === "playing" ||
+    (state.phase === "complete" && (holdBoard || !gameComplete));
+
   // In game -- render by phase
   return (
     <>
@@ -234,16 +263,11 @@ function GameRoomInner({
       {state.phase === "lobby" && (
         <Lobby state={state} gameId={gameId} send={send} />
       )}
-      {state.phase === "dealing" && dealing && (
-        <DealAnimation dealing={dealing} state={state} />
+      {state.phase === "dealing" && <DealAnimation state={state} />}
+      {showBoard && (
+        <GameBoard state={state} gameId={gameId} send={send} errorSeq={errorSeq} />
       )}
-      {state.phase === "dealing" && !dealing && (
-        <LoadingScreen text="Dealing..." />
-      )}
-      {state.phase === "playing" && (
-        <GameBoard state={state} send={send} />
-      )}
-      {state.phase === "complete" && gameComplete && (
+      {state.phase === "complete" && gameComplete && !holdBoard && (
         <GameComplete
           state={state}
           result={gameComplete}

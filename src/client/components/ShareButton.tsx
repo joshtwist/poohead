@@ -24,12 +24,12 @@ export function ShareButton({
   async function handleShare() {
     // Prefer the native share sheet on mobile (Safari/Chrome).
     // We only send title + url -- no `text` field, so messaging apps don't
-    // prepend "Come play Rummy with me" to the URL (which can confuse the
-    // recipient if they end up copy-pasting it).
+    // prepend a sentence to the URL (which can confuse the recipient if
+    // they end up copy-pasting it).
     if (navigator.share) {
       try {
         await navigator.share({
-          title: "Join my Rummy game!",
+          title: "Join my 💩head game!",
           url,
         });
         return;
@@ -60,6 +60,7 @@ export function ShareButton({
     return (
       <button
         onClick={handleShare}
+        data-testid="share-btn"
         className="w-full py-5 px-6 bg-gold hover:bg-amber-400 active:bg-amber-500 text-slate-900 font-bold text-lg rounded-2xl transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer shadow-lg shadow-gold/25 hover:shadow-gold/40 hover:scale-[1.02] active:scale-[0.99]"
       >
         <Icon className="w-6 h-6" strokeWidth={2.5} />
@@ -71,6 +72,7 @@ export function ShareButton({
   return (
     <button
       onClick={handleShare}
+      data-testid="share-btn"
       className="w-full py-3 px-6 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 text-white font-semibold rounded-xl transition-colors duration-200 flex items-center justify-center gap-2 cursor-pointer"
     >
       <Icon className="w-5 h-5" />
