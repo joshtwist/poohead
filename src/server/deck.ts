@@ -1,22 +1,5 @@
-import type { Card, Suit, Rank } from "../shared/types.ts";
-import { CARD_VALUES } from "../shared/types.ts";
-
-const SUITS: Suit[] = ["hearts", "diamonds", "clubs", "spades"];
-const RANKS: Rank[] = [
-  "A",
-  "2",
-  "3",
-  "4",
-  "5",
-  "6",
-  "7",
-  "8",
-  "9",
-  "10",
-  "J",
-  "Q",
-  "K",
-];
+import type { Card } from "../shared/types.ts";
+import { RANKS, SUITS } from "../shared/types.ts";
 
 /** Returns a standard 52-card deck in canonical order. */
 export function createDeck(): Card[] {
@@ -72,18 +55,4 @@ export function deal(
   }
 
   return { hands, remaining };
-}
-
-/** Returns the point value of a single card. */
-export function cardScore(card: Card): number {
-  return CARD_VALUES[card.rank];
-}
-
-/** Sums the point values of all cards in a hand. */
-export function scoreHand(hand: Card[]): number {
-  let total = 0;
-  for (const card of hand) {
-    total += CARD_VALUES[card.rank];
-  }
-  return total;
 }
