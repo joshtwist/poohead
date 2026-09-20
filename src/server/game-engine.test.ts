@@ -13,6 +13,7 @@ import {
   playCards,
   setPlayerConnected,
   setReady,
+  setUnready,
   startGame,
   swapCards,
 } from "./game-engine.ts";
@@ -108,6 +109,26 @@ describe("lobby → deal → swap → start", () => {
     s = setReady(s, "p3", fixedDeps);
     expect(s.phase).toBe("playing");
     expect(s.lastEvent?.kind).toBe("start");
+  });
+
+  it("unready reopens swapping for that player until the last player readies", () => {
+    let s = dealt(3);
+    s = setReady(s, "p1", fixedDeps);
+    expect(s.ready.p1).toBe(true);
+    s = setUnready(s, "p1");
+    expect(s.ready.p1).toBe(false);
+    expect(s.phase).toBe("swapping");
+    // …and they can swap again
+    const swapped = swapCards(s, "p1", s.hands.p1[0], s.tables.p1.faceUp[0]);
+    expect(swapped.hands.p1[0]).toEqual(s.tables.p1.faceUp[0]);
+    // Unready when not ready is a no-op
+    expect(setUnready(s, "p1")).toBe(s);
+    // Once everyone is ready play has begun and there is nothing to undo
+    s = setReady(s, "p1", fixedDeps);
+    s = setReady(s, "p2", fixedDeps);
+    s = setReady(s, "p3", fixedDeps);
+    expect(s.phase).toBe("playing");
+    expect(() => setUnready(s, "p1")).toThrow(/swapping/);
   });
 
   it("ready is idempotent", () => {

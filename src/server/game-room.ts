@@ -13,6 +13,7 @@ import {
   finishDealing,
   swapCards,
   setReady,
+  setUnready,
   forceStart,
   playCards,
   flipBlind,
@@ -273,6 +274,9 @@ export class GameRoom extends DurableObject<Env> {
       case "ready":
         await this.handleReady(ws);
         return;
+      case "unready":
+        await this.handleUnready(ws);
+        return;
       case "force_start":
         await this.handleForceStart(ws);
         return;
@@ -348,6 +352,12 @@ export class GameRoom extends DurableObject<Env> {
     const playerId = this.requirePlayerId(ws);
     const state = await this.loadState();
     await this.afterMutation(setReady(state, playerId));
+  }
+
+  private async handleUnready(ws: WebSocket): Promise<void> {
+    const playerId = this.requirePlayerId(ws);
+    const state = await this.loadState();
+    await this.afterMutation(setUnready(state, playerId));
   }
 
   private async handleForceStart(ws: WebSocket): Promise<void> {

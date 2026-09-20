@@ -9,6 +9,7 @@ export type ClientMessage =
   | StartGameMessage
   | SwapMessage
   | ReadyMessage
+  | UnreadyMessage
   | ForceStartMessage
   | PlayMessage
   | FlipMessage
@@ -45,6 +46,11 @@ export interface SwapMessage {
 /** Swapping phase: done swapping. Play begins when everyone is ready. */
 export interface ReadyMessage {
   type: "ready";
+}
+
+/** Swapping phase: changed your mind — keep swapping (only while others are still deciding). */
+export interface UnreadyMessage {
+  type: "unready";
 }
 
 /** Host only: start once every CONNECTED player is ready. */

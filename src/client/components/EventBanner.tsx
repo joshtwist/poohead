@@ -15,10 +15,15 @@ export function EventBanner({ banner }: { banner: Banner | null }) {
       style={{ transform: "translate(-50%,-50%)" }}
     >
       <div
-        className="font-display font-extrabold whitespace-nowrap"
+        className="font-display font-extrabold mx-auto"
         style={{
-          fontSize: "clamp(46px,14cqw,84px)",
-          lineHeight: 0.9,
+          // Short slams ("BURN!") go huge; a long name + verb steps down
+          // and is allowed to wrap so it always fits a phone.
+          fontSize: banner.text.length > 9 ? "clamp(30px,11cqw,64px)" : "clamp(46px,14cqw,84px)",
+          width: "max-content",
+          maxWidth: "92cqw",
+          overflowWrap: "break-word",
+          lineHeight: 0.92,
           letterSpacing: "-.05em",
           color: banner.color,
           textShadow: "0 6px 0 rgba(0,0,0,.3), 0 20px 40px rgba(0,0,0,.4)",

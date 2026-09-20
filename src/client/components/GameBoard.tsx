@@ -94,10 +94,14 @@ export function GameBoard({ state, gameId, send, errorSeq }: GameBoardProps) {
   const source = me.source;
   const myView = state.players.find((p) => p.playerId === me.playerId);
   const amOut = myView?.isOut ?? false;
-  const opponents = useMemo(
-    () => state.players.filter((p) => p.playerId !== me.playerId),
-    [state.players, me.playerId],
-  );
+  // Everyone else, starting with whoever plays after me and continuing
+  // in turn order — so play visibly runs left → right along the top and
+  // back down to me.
+  const opponents = useMemo(() => {
+    const i = state.players.findIndex((p) => p.playerId === me.playerId);
+    if (i < 0) return state.players;
+    return [...state.players.slice(i + 1), ...state.players.slice(0, i)];
+  }, [state.players, me.playerId]);
   const colorFor = useCallback(
     (pid: string) => playerColor(state.players, pid, me.playerId),
     [state.players, me.playerId],
@@ -398,9 +402,10 @@ export function GameBoard({ state, gameId, send, errorSeq }: GameBoardProps) {
       isHost: me.isCreator,
       canForceStart: allConnectedReady && readyCount < total,
       onReady: () => send({ type: "ready" }),
+      onUnready: () => send({ type: "unready" }),
       onForceStart: () => send({ type: "force_start" }),
       hint: me.ready
-        ? "Waiting on the others…"
+        ? "Waiting on the others… Undo to keep swapping."
         : selection.kind === "swapHand" || selection.kind === "swapFaceUp"
           ? "Now tap a card in the other row to swap."
           : "Park your big guns face-up: tap a hand card, then a table card.",

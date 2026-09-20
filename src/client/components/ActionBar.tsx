@@ -1,3 +1,4 @@
+import { SlideToReady } from "./SlideToReady.tsx";
 export type ActionModel =
   | {
       kind: "swap";
@@ -7,6 +8,7 @@ export type ActionModel =
       isHost: boolean;
       canForceStart: boolean;
       onReady: () => void;
+      onUnready: () => void;
       onForceStart: () => void;
       hint: string;
     }
@@ -58,24 +60,34 @@ export function ActionBar({ model }: ActionBarProps) {
       className="flex-shrink-0 flex flex-col items-center gap-1.5 mt-1"
     >
       <div className="flex gap-2 w-full max-w-[560px]" style={{ height: "clamp(52px,13cqw,64px)" }}>
-        {model.kind === "swap" && (
+        {model.kind === "swap" && !model.ready && <SlideToReady onCommit={model.onReady} />}
+
+        {model.kind === "swap" && model.ready && (
           <>
-            <button
-              data-testid="ready-btn"
-              onClick={model.onReady}
-              disabled={model.ready}
-              className={`${BTN} ${model.ready ? "secondary" : "primary"} flex-1`}
-              style={BTN_PAD}
+            <div
+              data-testid="ready-state"
+              className="glass h-full rounded-[18px] flex items-center justify-center gap-2 font-display font-extrabold text-lime whitespace-nowrap overflow-hidden"
+              style={{ flex: 1.3, padding: "0 clamp(10px,3cqw,18px)", fontSize: "clamp(14px,3.9cqw,19px)" }}
             >
-              {model.ready ? `Ready · ${model.readyCount}/${model.total}` : "Ready"}
+              <span aria-hidden>✓</span>
+              Ready · {model.readyCount}/{model.total}
+            </div>
+            <button
+              data-testid="unready-btn"
+              onClick={model.onUnready}
+              className={`${BTN} secondary`}
+              style={{ ...BTN_PAD, flex: 0.7, fontSize: "clamp(14px,3.9cqw,19px)" }}
+              title="Keep swapping"
+            >
+              Undo
             </button>
-            {model.isHost && model.ready && (
+            {model.isHost && (
               <button
                 data-testid="force-start-btn"
                 onClick={model.onForceStart}
                 disabled={!model.canForceStart}
                 className={`${BTN} secondary`}
-                style={{ ...BTN_PAD, flex: 0.8 }}
+                style={{ ...BTN_PAD, flex: 0.9, fontSize: "clamp(14px,3.9cqw,19px)" }}
                 title="Start without waiting for players who have dropped"
               >
                 Start now

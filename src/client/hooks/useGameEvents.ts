@@ -204,7 +204,7 @@ export function useGameEvents(state: StateMessage, selfId: string, gameId: strin
           vibratePickup();
         } else {
           doBadge(`+${n} 💩`);
-          show({ kind: "pickup", text: `${who} eats it`, sub: `+${n} to the hand.`, color: PINK });
+          show({ kind: "pickup", text: `${who} eats\u00A0💩`, sub: `+${n} to the hand.`, color: PINK });
           doRain("poo", 16);
         }
         break;
