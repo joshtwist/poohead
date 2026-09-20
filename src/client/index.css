@@ -1,25 +1,31 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens — deep-grape table, acid-lime "your turn", hot-pink shame,
+ * tangerine burn. See the design handoff README for the full palette.
+ */
 @theme {
-  --color-felt: #1b3726;
-  --color-felt-light: #245a38;
-  --color-felt-active: #245a35;
-  --color-felt-deep: #12261a;
-  --color-card-red: #c0392b;
-  --color-card-black: #1a1a2e;
-  --color-gold: #f59e0b;
-  --color-poo: #7b4a2d;
-  --color-poo-light: #a86a43;
-  --color-card-blue: #1e3a8a;
-  --color-card-blue-light: #2a4fae;
-  --color-card-blue-dark: #152a63;
-  --color-card-shadow: rgba(0, 0, 0, 0.22);
+  --color-table: #2b1743;
+  --color-table-light: #4b2a70;
+  --color-table-deep: #1b0d2e;
+  --color-ink: #1b0d2e;
+  --color-cream: #fff7e8;
+  --color-muted: #c9bbd9;
+  --color-lime: #d4ff4f;
+  --color-lime-shadow: #7fa61f;
+  --color-pink: #ff4fa3;
+  --color-pink-shadow: #b0246b;
+  --color-tangerine: #ff8a3d;
+  --color-card-red: #e0362c;
+  --color-card-black: #1e1a2b;
+  --font-display: "Bricolage Grotesque", "Nunito", system-ui, sans-serif;
+  --font-body: "Nunito", system-ui, sans-serif;
 }
 
 /*
  * Layout tiers. GameBoard sets data-tier from the viewport (see
- * lib/layout.ts); these variants let the board's spacing follow the same
- * decision as its pixel maths, instead of a separate CSS breakpoint.
+ * lib/layout.ts); these variants let spacing follow the same decision as
+ * the pixel maths instead of a separate CSS breakpoint.
  */
 @custom-variant compact (&:where([data-tier="compact"], [data-tier="compact"] *));
 @custom-variant tablet (&:where([data-tier="tablet"], [data-tier="tablet"] *, [data-tier="tabletWide"], [data-tier="tabletWide"] *));
@@ -31,6 +37,13 @@ body {
   -webkit-overflow-scrolling: touch;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: var(--font-body);
+  font-weight: 700;
+  color: var(--color-cream);
+  background: var(--color-table);
 }
 
 /*
@@ -47,6 +60,23 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  background: radial-gradient(ellipse 80% 55% at 50% 38%, #4b2a70 0%, #2b1743 62%, #1b0d2e 100%);
+  color: var(--color-cream);
+}
+
+/* Dot grid laid over the grape table. */
+.dot-grid {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Screens size their type against their own width (cqw). */
+.cq {
+  container-type: inline-size;
 }
 
 .game-board {
@@ -54,41 +84,277 @@ body {
   -webkit-user-select: none;
 }
 
-/* Horizontal scrollers (the hand) hide their scrollbar. */
-.no-scrollbar {
-  scrollbar-width: none;
-}
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
+.glass {
+  background: rgba(255, 247, 232, 0.1);
+  border: 1.5px solid rgba(255, 247, 232, 0.16);
 }
 
-/* Emoji rain: 💩 for pick-ups and the end screen, 🎉 for going out */
-@keyframes poo-fall {
+/* Lime call-to-action: chunky shadow that presses in. */
+.btn-lime {
+  background: var(--color-lime);
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-weight: 800;
+  box-shadow:
+    0 8px 0 #7fa61f,
+    0 18px 30px rgba(0, 0, 0, 0.35);
+  transition:
+    transform 0.12s,
+    box-shadow 0.12s,
+    opacity 0.2s;
+}
+.btn-lime:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 10px 0 #7fa61f,
+    0 22px 34px rgba(0, 0, 0, 0.4);
+}
+.btn-lime:not(:disabled):active {
+  transform: translateY(5px);
+  box-shadow:
+    0 3px 0 #7fa61f,
+    0 8px 14px rgba(0, 0, 0, 0.35);
+}
+.btn-lime:disabled {
+  background: rgba(255, 247, 232, 0.1);
+  color: var(--color-muted);
+  box-shadow: none;
+  cursor: default;
+}
+
+/* Action-bar buttons (shorter shadow than the big CTAs). */
+.btn-action {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  border-radius: 18px;
+  transition:
+    transform 0.12s,
+    opacity 0.2s,
+    background 0.2s,
+    color 0.2s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.btn-action:not(:disabled):active {
+  transform: translateY(3px);
+}
+.btn-action.primary {
+  background: var(--color-lime);
+  color: var(--color-ink);
+  box-shadow:
+    0 6px 0 #7fa61f,
+    0 12px 20px rgba(0, 0, 0, 0.3);
+}
+.btn-action.secondary {
+  background: rgba(255, 247, 232, 0.1);
+  color: var(--color-cream);
+  box-shadow: inset 0 0 0 2px rgba(255, 247, 232, 0.16);
+}
+.btn-action.danger {
+  background: var(--color-pink);
+  color: var(--color-cream);
+  box-shadow:
+    0 6px 0 #b0246b,
+    0 12px 20px rgba(0, 0, 0, 0.3);
+}
+.btn-action:disabled {
+  opacity: 0.4;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* Keyframes — copied verbatim from the prototype. */
+@keyframes pop {
   0% {
-    transform: translateY(-10vh) rotate(0deg);
+    transform: scale(0.6);
     opacity: 0;
   }
-  10% {
+  60% {
+    transform: scale(1.08);
     opacity: 1;
   }
   100% {
-    transform: translateY(110vh) rotate(360deg);
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes bannerIn {
+  0% {
+    transform: translate(-50%, -50%) scale(0.4) rotate(-8deg);
+    opacity: 0;
+  }
+  14% {
+    transform: translate(-50%, -50%) scale(1.12) rotate(2deg);
+    opacity: 1;
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(1) rotate(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -60%) scale(1.15);
+    opacity: 0;
+  }
+}
+@keyframes flashFade {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes fall {
+  0% {
+    transform: translateY(-60px) rotate(0deg);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(1000px) rotate(400deg);
     opacity: 0.9;
   }
 }
+@keyframes flame {
+  0% {
+    transform: translate(-50%, 0) scale(0.4);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, -40px) scale(1.3);
+  }
+  100% {
+    transform: translate(-50%, -190px) scale(0.5);
+    opacity: 0;
+  }
+}
+@keyframes pulseLime {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(212, 255, 79, 0.75);
+  }
+  60% {
+    box-shadow: 0 0 0 10px rgba(212, 255, 79, 0);
+  }
+}
+@keyframes pulsePink {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 79, 163, 0.75);
+  }
+  60% {
+    box-shadow: 0 0 0 10px rgba(255, 79, 163, 0);
+  }
+}
+@keyframes slideIn {
+  from {
+    transform: translateX(-18px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes wiggle {
+  0%,
+  100% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(4deg);
+  }
+}
+@keyframes floaty {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+@keyframes badgeUp {
+  0% {
+    transform: translate(-50%, 10px) scale(0.6);
+    opacity: 0;
+  }
+  15% {
+    transform: translate(-50%, -4px) scale(1.15);
+    opacity: 1;
+  }
+  75% {
+    transform: translate(-50%, -8px) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -22px);
+    opacity: 0;
+  }
+}
+@keyframes turnPop {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.anim-wiggle {
+  display: inline-block;
+  animation: wiggle 2.4s ease-in-out infinite;
+}
+.anim-slide-in {
+  animation: slideIn 0.35s ease-out both;
+}
+.anim-pop {
+  animation: pop 0.5s cubic-bezier(0.2, 1.2, 0.4, 1) both;
+}
+.anim-turn-pop {
+  animation: turnPop 0.35s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.anim-badge-up {
+  animation: badgeUp 2.2s ease-out both;
+}
+.anim-banner-in {
+  animation: bannerIn 1.7s cubic-bezier(0.2, 1, 0.3, 1) both;
+}
+.anim-flash {
+  animation: flashFade 1s ease-out both;
+}
+.anim-floaty {
+  display: inline-block;
+  animation: floaty 1.4s ease-in-out infinite;
+}
+.pulse-lime {
+  animation: pulseLime 1.6s ease-out infinite;
+}
+.pulse-pink {
+  animation: pulsePink 1.4s ease-out infinite;
+}
+
+/* Emoji showers: 💩 for pick-ups, 🎉 for going out. */
 .emoji-drop {
   position: absolute;
   top: 0;
-  animation-name: poo-fall;
+  line-height: 1;
+  animation-name: fall;
   animation-timing-function: linear;
-  animation-iteration-count: infinite;
-  /* `both` keeps a drop invisible while it waits for its delay */
   animation-fill-mode: both;
   pointer-events: none;
   will-change: transform;
-}
-.emoji-drop.emoji-burst {
-  animation-iteration-count: 1;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
 }
 @media (prefers-reduced-motion: reduce) {
   .emoji-drop {
@@ -96,18 +362,18 @@ body {
     top: 40%;
     opacity: 0.6;
   }
+  .anim-wiggle,
+  .anim-floaty,
+  .pulse-lime,
+  .pulse-pink {
+    animation: none;
+  }
 }
 
-/* Pulsing glow for "this is playable right now" */
-@keyframes pulse-ring {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55);
-  }
-  50% {
-    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
-  }
+/* Hide scrollbars on the few screens that scroll. */
+.no-scrollbar {
+  scrollbar-width: none;
 }
-.pulse-gold {
-  animation: pulse-ring 1.4s ease-out infinite;
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }

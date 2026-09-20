@@ -17,8 +17,8 @@ import {
  * - the board never scrolls vertically
  * - every control and table slot sits inside the viewport
  * - opponents stay on one row
- * - the hand fans up to 9 cards without scrolling, then scrolls with each
- *   card still showing at least its rank corner
+ * - the hand fans up to 20 cards inside the viewport, every card still
+ *   peeking out far enough to be tapped
  */
 
 const EXPECTED_TIER: Record<string, string> = {
@@ -66,7 +66,17 @@ async function expectInViewport(page: Page, testId: string): Promise<void> {
   expect(box.y + box.height, `${testId} bottom`).toBeLessThanOrEqual(vp.height + 1);
 }
 
-const scroller = (page: Page) => page.getByTestId("player-hand").locator("> div");
+/** Left/right edges of every hand card, sorted left to right. */
+async function handRects(page: Page): Promise<{ left: number; right: number }[]> {
+  return page
+    .locator('[data-testid^="hand-card-"]')
+    .evaluateAll((els) =>
+      els
+        .map((e) => e.getBoundingClientRect())
+        .map((r) => ({ left: r.left, right: r.right }))
+        .sort((a, b) => a.left - b.left),
+    );
+}
 
 test.describe("layout", () => {
   test("board fits the viewport with three players", async ({ browser }, testInfo) => {
@@ -93,47 +103,37 @@ test.describe("layout", () => {
         expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
       }
 
-      // Nine cards fan without scrolling…
+      // Nine cards fan comfortably inside the viewport…
       await forceState(page, { hand: cs("2h 3h 4h 5h 6h 7h 8h 9h Jh") });
       await expect(handCard(page, "Jh")).toBeVisible();
       await expect(page.locator('[data-testid^="hand-card-"]')).toHaveCount(9);
-      await page.waitForTimeout(700); // let the springs settle
-      const nine = await scroller(page).evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth }));
-      expect(nine.sw, "9 cards fit without scrolling").toBeLessThanOrEqual(nine.cw);
+      await page.waitForTimeout(700); // let the flights settle
+      const nine = await handRects(page);
+      const vw = page.viewportSize()!.width;
+      expect(nine[0].left).toBeGreaterThanOrEqual(0);
+      expect(nine[nine.length - 1].right).toBeLessThanOrEqual(vw);
+      for (let i = 1; i < nine.length; i++) {
+        expect(nine[i].left - nine[i - 1].left, `card ${i} step`).toBeGreaterThanOrEqual(25);
+      }
       await expectNoVerticalScroll(page);
 
-      // …twenty compress to the minimum step and, on a phone, overflow
-      // into a horizontal scroller. Every card must still peek out by
-      // at least 25px so it can be tapped.
+      // …twenty compress the fan but still fit, each card peeking out by
+      // at least 12px so its rank corner stays readable and tappable.
       await forceState(page, {
         hand: cs("2h 3h 4h 5h 6h 7h 8h 9h Jh Qh Kh Ah 2s 3s 4s 5s 6s 7s 8s 9s"),
         makeCurrent: true, // so a card can be selected below
       });
       await expect(page.locator('[data-testid^="hand-card-"]')).toHaveCount(20);
       await page.waitForTimeout(700);
-      const twenty = await scroller(page).evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth }));
-      const rects = await page
-        .locator('[data-testid^="hand-card-"]')
-        .evaluateAll((els) =>
-          els
-            .map((e) => e.getBoundingClientRect())
-            .map((r) => ({ left: r.left, right: r.right }))
-            .sort((a, b) => a.left - b.left),
-        );
-      for (let i = 1; i < rects.length; i++) {
-        expect(rects[i].left - rects[i - 1].left, `card ${i} step`).toBeGreaterThanOrEqual(25);
-      }
-      if (twenty.sw > twenty.cw) {
-        // Phone: the fan is wider than the screen and scrolls sideways.
-        expect(testInfo.project.name, "only phones need to scroll 20 cards").toMatch(/iphone/);
-      } else {
-        // Tablet/desktop: the whole fan fits inside the viewport.
-        expect(rects[0].left).toBeGreaterThanOrEqual(0);
-        expect(rects[rects.length - 1].right).toBeLessThanOrEqual(page.viewportSize()!.width);
+      const twenty = await handRects(page);
+      expect(twenty[0].left).toBeGreaterThanOrEqual(0);
+      expect(twenty[twenty.length - 1].right).toBeLessThanOrEqual(vw);
+      for (let i = 1; i < twenty.length; i++) {
+        expect(twenty[i].left - twenty[i - 1].left, `card ${i} step`).toBeGreaterThanOrEqual(12);
       }
       await expectNoVerticalScroll(page);
       // Selecting a card lifts it without breaking the layout
-      await handCard(page, "2h").click({ position: { x: 12, y: 24 } });
+      await handCard(page, "2h").dispatchEvent("click");
       await expect(handCard(page, "2h")).toHaveAttribute("data-selected", "true");
       await expectNoVerticalScroll(page);
     } finally {

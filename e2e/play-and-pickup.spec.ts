@@ -41,7 +41,7 @@ test.describe("playing from the hand", () => {
       for (const p of pages) await waitForPhase(p, "playing");
       await expectMyTurn(alice.page);
       await expectNotMyTurn(bob.page);
-      await expectRequirement(alice.page, "Play 3 or higher");
+      await expectRequirement(alice.page, "3 or higher");
       await expect(alice.page.getByTestId("play-btn")).toBeDisabled();
 
       // Select two 4s — the button label follows the selection
@@ -50,7 +50,7 @@ test.describe("playing from the hand", () => {
       await expect(alice.page.getByTestId("play-btn")).toBeEnabled();
       await expect(alice.page.getByTestId("select-all-chip")).toContainText("All 2 4s");
       await handCard(alice.page, "4s").click(TAP);
-      await expect(alice.page.getByTestId("play-btn")).toContainText("Play 2 4s");
+      await expect(alice.page.getByTestId("play-btn")).toContainText("Play 2×4");
       await expect(alice.page.getByTestId("select-all-chip")).toHaveCount(0);
       await alice.page.getByTestId("play-btn").click();
 
@@ -64,12 +64,11 @@ test.describe("playing from the hand", () => {
 
       // Bob must beat a 4 and can't
       await expectMyTurn(bob.page);
-      await expectRequirement(bob.page, "Play 4 or higher");
+      await expectRequirement(bob.page, "4 or higher");
       await forceState(bob.page, { hand: cs("3c 3h") });
       await expect(handCard(bob.page, "3c")).toBeVisible();
-      await expect(bob.page.getByTestId("play-btn")).toHaveText(/No playable cards/);
       await expect(bob.page.getByTestId("play-btn")).toBeDisabled();
-      await expect(bob.page.getByTestId("action-hint")).toContainText("pick up");
+      await expect(bob.page.getByTestId("action-hint")).toContainText("Nothing fits");
 
       await pickUp(bob.page);
       // 💩 rains on every screen, and Bob's tile tells Alice how many he took
@@ -104,7 +103,7 @@ test.describe("playing from the hand", () => {
       const btn = alice.page.getByTestId("pickup-btn");
       await btn.click();
       await expect(btn).toHaveAttribute("data-armed", "true");
-      await expect(btn).toContainText("Really pick up?");
+      await expect(btn).toContainText("Really?");
       await expectPileCount(alice.page, 1);
       await expectMyTurn(alice.page);
       await btn.click();
@@ -115,9 +114,10 @@ test.describe("playing from the hand", () => {
       // Playing an illegal rank is refused by the client before it's sent
       await forceState(bob.page, { hand: cs("3c"), pile: [cs("Kd")], makeCurrent: true });
       await expect(handCard(bob.page, "3c")).toBeVisible();
-      await expectRequirement(bob.page, "Play King or higher");
-      await expect(bob.page.getByTestId("play-btn")).toHaveText(/No playable cards/);
+      await expectRequirement(bob.page, "King or higher");
+      await expect(bob.page.getByTestId("play-btn")).toBeDisabled();
       await handCard(bob.page, "3c").click(TAP);
+      await expect(bob.page.getByTestId("action-hint")).toContainText("won't beat the pile");
       await expect(handCard(bob.page, "3c")).not.toHaveAttribute("data-selected", "true");
       await expect(bob.page.getByTestId("play-btn")).toBeDisabled();
     } finally {

@@ -1,239 +1,170 @@
-import { useRef } from "react";
-import { motion } from "framer-motion";
-import { Check, WifiOff } from "lucide-react";
 import type { GamePhase } from "../../shared/types.ts";
-import { TABLE_SIZE, cardKey } from "../../shared/types.ts";
-import type { GameEvent, PlayerView } from "../../shared/protocol.ts";
-import { ICON_MAP, ICON_COLORS } from "../lib/icons.ts";
+import { TABLE_SIZE } from "../../shared/types.ts";
+import type { PlayerView } from "../../shared/protocol.ts";
+import { ICON_EMOJI } from "../lib/icons.ts";
 import { ordinal } from "../lib/format.ts";
-import { Card, CardGhost } from "./Card.tsx";
-import { CARD_DIMS, type Layout } from "../lib/layout.ts";
 
 interface OpponentsAreaProps {
-  players: PlayerView[];
-  selfId: string;
+  /** Everyone but you, in seat order. */
+  opponents: PlayerView[];
+  colorFor: (playerId: string) => string;
   currentPlayerId: string | null;
   phase: GamePhase;
-  layout: Layout;
-  /** Drives the little "+12 💩" badge over the tile of whoever just acted. */
-  lastEvent: GameEvent | null;
-}
-
-/** Short reaction shown over an opponent's tile for their latest event. */
-function badgeFor(event: GameEvent | null, playerId: string): string | null {
-  if (!event || event.playerId !== playerId) return null;
-  switch (event.kind) {
-    case "pickup":
-      return `+${event.count} 💩`;
-    case "flip_fail":
-      return `+${event.pickedUp} 💩`;
-    case "play":
-    case "flip":
-      if (event.wentOut) return "out! 🎉";
-      if (event.burned) return "burn 🔥";
-      return null;
-    default:
-      return null;
-  }
+  /** Transient reactions ("+3 💩", "burn 🔥") keyed by playerId. */
+  badges: Record<string, { text: string; key: number }>;
+  /**
+   * Narrow tiles (avatar over name, count as a pill) so three or four
+   * opponents still share one row of a phone.
+   */
+  dense: boolean;
 }
 
 /**
- * One centred row of opponent tiles (never wraps: four compact tiles fit
- * a 360px phone). Each tile shows avatar, name, hand size and — the big
- * difference from Rummy — their three table slots, because face-up cards
- * are public information in 💩head.
+ * One centred row of opponent tiles. Each tile is avatar + name + hand
+ * count, a hand-stub zone and three slot zones; the cards themselves live
+ * in the card layer and fly to these placeholders.
  */
-export function OpponentsArea({
-  players,
-  selfId,
-  currentPlayerId,
-  phase,
-  layout,
-  lastEvent,
-}: OpponentsAreaProps) {
-  // Only react to events that happen while we're on screen — a reload
-  // shouldn't replay the last badge.
-  const mountSeqRef = useRef(lastEvent?.seq ?? 0);
-  const liveEvent = lastEvent && lastEvent.seq > mountSeqRef.current ? lastEvent : null;
-  const opponents = players
-    .map((p, i) => ({ player: p, colorIndex: i }))
-    .filter(({ player }) => player.playerId !== selfId);
-
+export function OpponentsArea({ opponents, colorFor, currentPlayerId, phase, badges, dense }: OpponentsAreaProps) {
+  const many = opponents.length >= 4;
+  const slotW = dense ? (many ? "min(6.8cqw,40px)" : "min(8cqw,46px)") : "min(8cqw,46px)";
+  const slotH = dense ? (many ? "min(9.5cqw,56px)" : "min(11.2cqw,64px)") : "min(11.2cqw,64px)";
+  const avatar = dense ? "clamp(26px,7cqw,34px)" : "clamp(30px,7.5cqw,42px)";
   return (
     <div
-      className="flex-shrink-0 flex justify-center items-start gap-2 compact:gap-1.5 tablet:gap-6 px-2 pt-3 compact:pt-2 pb-1 flex-nowrap"
+      className="flex-shrink-0 flex justify-center items-start flex-nowrap"
+      style={{ gap: dense ? "clamp(8px,2.5cqw,24px)" : "clamp(10px,4cqw,40px)" }}
       data-testid="player-bar"
     >
-      {opponents.map(({ player, colorIndex }) => (
-        <OpponentTile
-          key={player.playerId}
-          player={player}
-          colorClass={ICON_COLORS[colorIndex % ICON_COLORS.length]}
-          isActive={currentPlayerId === player.playerId}
-          phase={phase}
-          layout={layout}
-          badge={badgeFor(liveEvent, player.playerId)}
-          badgeKey={liveEvent?.seq ?? 0}
-        />
-      ))}
-    </div>
-  );
-}
-
-function OpponentTile({
-  player,
-  colorClass,
-  isActive,
-  phase,
-  layout,
-  badge,
-  badgeKey,
-}: {
-  player: PlayerView;
-  colorClass: string;
-  isActive: boolean;
-  phase: GamePhase;
-  layout: Layout;
-  badge: string | null;
-  badgeKey: number;
-}) {
-  const Icon = ICON_MAP[player.icon];
-  const size = layout.oppCard;
-  const d = CARD_DIMS[size];
-  const peek = size === "xs" ? 5 : 7;
-  const avatar = layout.avatar;
-
-  return (
-    <div
-      data-testid={`opponent-${player.name}`}
-      data-opponent-tile
-      data-connected={player.connected ? "true" : "false"}
-      data-out={player.isOut ? "true" : undefined}
-      className={`relative flex flex-col items-center gap-1 flex-shrink-0 transition-opacity ${
-        !player.connected ? "opacity-50" : ""
-      } ${player.isOut ? "opacity-70" : ""}`}
-    >
-      {badge && (
-        <motion.div
-          key={badgeKey}
-          data-testid={`opponent-${player.name}-badge`}
-          className="absolute top-1 left-1/2 z-10 px-2 py-0.5 rounded-full bg-slate-900/90 border border-white/15 text-[11px] font-bold text-white whitespace-nowrap pointer-events-none"
-          initial={{ opacity: 0, y: 6, x: "-50%", scale: 0.7 }}
-          animate={{ opacity: [0, 1, 1, 0], y: [10, -4, -8, -20], x: "-50%", scale: [0.7, 1.15, 1, 1] }}
-          transition={{ duration: 2.4, times: [0, 0.15, 0.75, 1] }}
-        >
-          {badge}
-        </motion.div>
-      )}
-      {/* Avatar + name */}
-      <div className="flex items-center gap-1.5">
-        <div className="relative">
-          {isActive && (
-            <motion.div
-              className="absolute -inset-1 rounded-full ring-2 ring-gold"
-              animate={{ opacity: [0.4, 1, 0.4] }}
-              transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-            />
-          )}
-          <div
-            className={`relative rounded-full flex items-center justify-center ${colorClass}`}
-            style={{ width: avatar, height: avatar }}
-          >
-            <Icon className="text-white" style={{ width: avatar * 0.5, height: avatar * 0.5 }} />
-          </div>
-          {phase === "swapping" && player.ready && (
+      {opponents.map((p) => {
+        const active = phase === "playing" && currentPlayerId === p.playerId;
+        const badge = badges[p.playerId];
+        const avatarEl = (
+          <div className="relative">
             <div
-              className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center"
-              data-testid={`opponent-${player.name}-ready`}
+              className={`rounded-full flex items-center justify-center ${active ? "pulse-lime" : ""}`}
+              style={{
+                width: avatar,
+                height: avatar,
+                background: colorFor(p.playerId),
+                fontSize: dense ? "clamp(13px,3.4cqw,18px)" : "clamp(15px,3.8cqw,22px)",
+                boxShadow: `inset 0 -3px 0 rgba(0,0,0,.18)${active ? ", 0 0 0 3px #2B1743, 0 0 0 6px #D4FF4F" : ""}`,
+                transition: "box-shadow .3s",
+              }}
             >
-              <Check className="w-3 h-3 text-white" strokeWidth={3} />
+              {ICON_EMOJI[p.icon]}
             </div>
-          )}
-          {!player.connected && (
-            <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-slate-700 flex items-center justify-center">
-              <WifiOff className="w-2.5 h-2.5 text-slate-300" />
-            </div>
-          )}
-          {player.isOut && player.finishedPlace != null && (
-            <div
-              className="absolute -top-1.5 -right-2 px-1 rounded-full bg-gold text-slate-900 text-[9px] font-bold leading-4"
-              data-testid={`opponent-${player.name}-place`}
-            >
-              {ordinal(player.finishedPlace)}
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col leading-tight">
-          <span
-            className={`text-[11px] tablet:text-sm font-semibold max-w-[64px] tablet:max-w-[110px] truncate ${
-              isActive ? "text-gold" : "text-slate-100"
-            }`}
-          >
-            {player.name}
-          </span>
-          <HandCount count={player.handCount} isOut={player.isOut} name={player.name} />
-        </div>
-      </div>
-
-      {/* Table slots */}
-      <div className="flex" style={{ gap: size === "xs" ? 3 : 5 }}>
-        {Array.from({ length: TABLE_SIZE }).map((_, i) => {
-          const hasBack = player.faceDownSlots[i] ?? false;
-          const card = player.faceUp[i];
-          return (
-            <div
-              key={i}
-              data-testid={`opponent-${player.name}-slot-${i}`}
-              className="relative"
-              style={{ width: d.w, height: d.h + peek }}
-            >
-              <div className="absolute left-0" style={{ top: peek }}>
-                {hasBack ? <Card faceDown size={size} /> : <CardGhost size={size} />}
-              </div>
-              {card && (
-                <div className="absolute left-0 top-0" style={{ zIndex: 2 }}>
-                  <Card
-                    card={card}
-                    size={size}
-                    testId={`opp-faceup-${player.name}-${cardKey(card)}`}
-                  />
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/** Tiny fan of card backs + a number, capped so big hands stay compact. */
-function HandCount({ count, isOut, name }: { count: number; isOut: boolean; name: string }) {
-  const visible = Math.min(count, 4);
-  const cardW = 9;
-  const stepX = 4;
-  return (
-    <div
-      className="flex items-center gap-1 h-4"
-      data-testid={`opponent-${name}-hand-count`}
-      data-count={count}
-    >
-      {isOut ? (
-        <span className="text-[10px] text-gold">out</span>
-      ) : (
-        <>
-          <div className="relative h-3.5" style={{ width: visible === 0 ? 0 : cardW + (visible - 1) * stepX }}>
-            {Array.from({ length: visible }).map((_, i) => (
+            {phase === "swapping" && p.ready && (
               <div
-                key={i}
-                className="absolute top-0 rounded-[2px] bg-card-blue border border-card-blue-dark"
-                style={{ left: i * stepX, width: cardW, height: 14, zIndex: i }}
-              />
-            ))}
+                data-testid={`opponent-${p.name}-ready`}
+                className="absolute -right-1 -bottom-[3px] w-4 h-4 rounded-full bg-lime text-ink text-[10px] font-black flex items-center justify-center border-2 border-table"
+              >
+                ✓
+              </div>
+            )}
+            {!p.connected && (
+              <div
+                className="absolute -right-1 -bottom-[3px] w-4 h-4 rounded-full bg-table-deep text-muted text-[9px] flex items-center justify-center border-2 border-table"
+                title="Offline"
+              >
+                ⌁
+              </div>
+            )}
+            {p.isOut && p.finishedPlace != null && (
+              <div
+                data-testid={`opponent-${p.name}-place`}
+                className="absolute -right-2 -top-1.5 px-1.5 rounded-full bg-lime text-ink text-[10px] font-black leading-4"
+              >
+                {ordinal(p.finishedPlace)}
+              </div>
+            )}
           </div>
-          <span className="text-[10px] text-slate-300/90 tabular-nums">{count}</span>
-        </>
-      )}
+        );
+        const nameStyle = {
+          fontSize: dense ? "clamp(11px,2.9cqw,14px)" : "clamp(12px,3.2cqw,16px)",
+          color: active ? "#D4FF4F" : "#FFF7E8",
+        };
+        return (
+          <div
+            key={p.playerId}
+            data-testid={`opponent-${p.name}`}
+            data-opponent-tile
+            data-connected={p.connected ? "true" : "false"}
+            data-out={p.isOut ? "true" : undefined}
+            className="relative flex flex-col items-center gap-1.5 flex-shrink-0 transition-opacity duration-300"
+            style={{ opacity: p.isOut ? 0.55 : p.connected ? 1 : 0.5 }}
+          >
+            {badge && (
+              <div
+                key={badge.key}
+                data-testid={`opponent-${p.name}-badge`}
+                className="anim-badge-up absolute left-1/2 z-10 px-2.5 py-1 rounded-full bg-cream text-ink font-black text-xs whitespace-nowrap pointer-events-none"
+                style={{ top: -6, boxShadow: "0 4px 12px rgba(0,0,0,.35)" }}
+              >
+                {badge.text}
+              </div>
+            )}
+
+            {dense ? (
+              <>
+                <div className="flex items-center gap-1.5">
+                  {avatarEl}
+                  <div className="relative">
+                    <div data-zone={`ohand-${p.playerId}`} style={{ width: "min(5cqw,28px)", height: "min(7cqw,40px)" }} />
+                    <div
+                      className="absolute -right-1.5 -bottom-1 min-w-4 px-1 rounded-full bg-cream text-ink font-black text-[9.5px] leading-[15px] text-center whitespace-nowrap"
+                      data-testid={`opponent-${p.name}-hand-count`}
+                      data-count={p.handCount}
+                      style={{ boxShadow: "0 2px 6px rgba(0,0,0,.35)" }}
+                    >
+                      {p.isOut ? "out" : p.handCount}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className="font-display font-extrabold truncate -mt-0.5"
+                  style={{ ...nameStyle, maxWidth: `calc(3 * ${slotW} + 8px)` }}
+                >
+                  {p.name}
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-[7px]">
+                {avatarEl}
+                <div className="flex flex-col" style={{ lineHeight: 1.05 }}>
+                  <div className="font-display font-extrabold truncate" style={{ ...nameStyle, maxWidth: 70 }}>
+                    {p.name}
+                  </div>
+                  <div
+                    className="text-muted font-extrabold mt-0.5"
+                    style={{ fontSize: "clamp(10px,2.7cqw,13px)" }}
+                    data-testid={`opponent-${p.name}-hand-count`}
+                    data-count={p.handCount}
+                  >
+                    {p.isOut ? "out" : `${p.handCount} in hand`}
+                  </div>
+                </div>
+                <div
+                  data-zone={`ohand-${p.playerId}`}
+                  className="ml-0.5"
+                  style={{ width: "min(6cqw,34px)", height: "min(8.4cqw,48px)" }}
+                />
+              </div>
+            )}
+
+            <div className="flex gap-1">
+              {Array.from({ length: TABLE_SIZE }).map((_, i) => (
+                <div
+                  key={i}
+                  data-zone={`oslot-${p.playerId}-${i}`}
+                  data-testid={`opponent-${p.name}-slot-${i}`}
+                  className="rounded-[5px] border-[1.5px] border-dashed border-cream/18"
+                  style={{ width: slotW, height: slotH }}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -43,7 +43,7 @@ test("blind flips, burn, going out, end screen and rematch", async ({ browser })
     await expectMyTurn(alice.page);
     await expect(alice.page.getByTestId("action-bar")).toHaveAttribute("data-kind", "flip");
     await expect(alice.page.getByTestId("flip-btn")).toBeDisabled();
-    await expectRequirement(alice.page, "Play 9 or higher");
+    await expectRequirement(alice.page, "9 or higher");
     // Nobody can see what's face down
     await expect(bob.page.getByTestId("opponent-Alice-slot-0")).toBeVisible();
     await expect(bob.page.locator('[data-testid^="opp-faceup-Alice-"]')).toHaveCount(0);
@@ -68,7 +68,7 @@ test("blind flips, burn, going out, end screen and rematch", async ({ browser })
     // Back to the blind cards: the 10 burns, so Alice goes again
     await forceState(alice.page, { hand: [], faceUp: [] });
     await expect(alice.page.getByTestId("action-bar")).toHaveAttribute("data-kind", "flip");
-    await expectRequirement(alice.page, "Play Queen or higher");
+    await expectRequirement(alice.page, "Queen or higher");
     await flipSlot(alice.page, 1);
     await expectPileCount(alice.page, 0);
     await expect(alice.page.getByTestId("burned-count")).toHaveAttribute("data-count", "2");
@@ -80,8 +80,8 @@ test("blind flips, burn, going out, end screen and rematch", async ({ browser })
     // Going out gets confetti on the way to the end screen
     await expectRain(alice.page, "confetti");
     await expect(bob.page.getByTestId("poohead-banner")).toBeVisible({ timeout: 15_000 });
-    await expect(bob.page.getByTestId("poohead-banner")).toHaveText("You're the 💩head!");
-    await expect(alice.page.getByTestId("poohead-banner")).toHaveText("Bob is the 💩head!");
+    await expect(bob.page.getByTestId("poohead-banner")).toHaveText("You're the 💩head");
+    await expect(alice.page.getByTestId("poohead-banner")).toHaveText("Bob is the 💩head");
     await expect(alice.page.getByTestId("standing-row-Alice")).toHaveAttribute("data-place", "1");
     await expect(alice.page.getByTestId("standing-row-Bob")).toHaveAttribute("data-place", "2");
     // Bob's remaining cards (including the face-down ones) are revealed
@@ -97,7 +97,7 @@ test("blind flips, burn, going out, end screen and rematch", async ({ browser })
     await bob.page.getByTestId("join-rematch-btn").click();
     await expect(bob.page.getByTestId("lobby-player-Bob")).toBeVisible();
     await expect(alice.page.getByTestId("lobby-player-Bob")).toBeVisible();
-    await expect(alice.page.getByTestId("lobby-count")).toHaveText("Players (2/5)");
+    await expect(alice.page.getByTestId("lobby-count")).toHaveText("2 of 5 at the table");
   } finally {
     await closeAll(players);
   }

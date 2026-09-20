@@ -26,7 +26,7 @@ test("lobby, deal, swap and ready gating", async ({ browser }) => {
     await expect(alice.page.getByTestId("rules-millybims")).toHaveAttribute("data-selected", "true");
     await expect(alice.page.getByTestId("rules-ukpub")).toBeVisible();
     await expect(bob.page.getByTestId("rules-millybims")).toHaveCount(0);
-    await expect(alice.page.getByTestId("lobby-count")).toHaveText("Players (3/5)");
+    await expect(alice.page.getByTestId("lobby-count")).toHaveText("3 of 5 at the table");
     await expect(alice.page.getByTestId("share-btn")).toBeVisible();
     await expect(bob.page.getByTestId("start-game-btn")).toHaveCount(0);
 
@@ -35,7 +35,7 @@ test("lobby, deal, swap and ready gating", async ({ browser }) => {
     await waitForSwapping(pages);
 
     // The swap phase explains itself
-    await expect(alice.page.getByTestId("swap-callout")).toContainText("Set up your table");
+    await expect(alice.page.getByTestId("action-hint")).toContainText("Park your big guns");
 
     // 3 hand + 3 face-up + 3 face-down each
     await expectHandCount(alice.page, 3);
@@ -50,18 +50,15 @@ test("lobby, deal, swap and ready gating", async ({ browser }) => {
     await forceState(alice.page, { hand: cs("2h 3d Jc"), faceUp: cs("7d 9s Ad") });
     await expect(handCard(alice.page, "2h")).toBeVisible();
     await handCard(alice.page, "2h").click({ position: { x: 12, y: 24 } });
-    await expect(alice.page.getByTestId("action-hint")).toContainText("tap a face-up card");
+    await expect(alice.page.getByTestId("action-hint")).toContainText("tap a card in the other row");
     // …and the three face-up cards light up as targets
-    await expect(alice.page.getByTestId("my-table").locator('[data-target="true"]')).toHaveCount(3);
+    await expect(alice.page.locator('[data-testid^="faceup-card-"][data-target="true"]')).toHaveCount(3);
     await faceUpCard(alice.page, "7d").click();
     await expect(faceUpCard(alice.page, "2h")).toBeVisible();
     await expect(handCard(alice.page, "7d")).toBeVisible();
     await expect(alice.page.locator('[data-testid^="faceup-card-"]')).toHaveCount(3);
-    // The two cards fly past each other, then settle fully opaque in place
-    await expect(alice.page.getByTestId("swap-flight")).toHaveCount(0);
-    await expect(faceUpCard(alice.page, "2h").locator("..")).toHaveCSS("opacity", "1");
-    await expect(handCard(alice.page, "7d").locator("> div").first()).toHaveCSS("opacity", "1");
-    await expect(alice.page.getByTestId("my-table").locator('[data-target="true"]')).toHaveCount(0);
+    // The two cards swap zones and the targets switch off again
+    await expect(alice.page.locator('[data-testid^="faceup-card-"][data-target="true"]')).toHaveCount(0);
     // Table-first works too: every hand card becomes a target until you change your mind
     await faceUpCard(alice.page, "9s").click();
     await expect(handCard(alice.page, "3d")).toHaveAttribute("data-target", "true");
@@ -79,7 +76,7 @@ test("lobby, deal, swap and ready gating", async ({ browser }) => {
     await expect(carol.page.getByTestId("status-bar")).toContainText("2/3 ready");
     await waitForPhase(carol.page, "swapping");
     // Once ready you can't swap any more
-    await expect(alice.page.getByTestId("ready-btn")).toContainText("Ready (2/3)");
+    await expect(alice.page.getByTestId("ready-btn")).toContainText("Ready · 2/3");
 
     await carol.page.getByTestId("ready-btn").click();
     for (const p of pages) await waitForPhase(p, "playing");

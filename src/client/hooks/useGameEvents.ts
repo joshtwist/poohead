@@ -1,62 +1,88 @@
 import { useEffect, useRef, useState } from "react";
 import type { GameEvent, StateMessage } from "../../shared/protocol.ts";
-import { formatRank } from "../../shared/rules.ts";
 import { getLastSeenSeq, setLastSeenSeq } from "../lib/storage.ts";
-import { joinNames, ordinal, cardCount } from "../lib/format.ts";
+import { joinNames } from "../lib/format.ts";
 import {
   vibrateAction,
   vibrateBurn,
+  vibrateLoss,
   vibratePickup,
   vibrateTurn,
   vibrateWin,
 } from "../lib/haptics.ts";
-import type { TableFlash } from "../components/TableArea.tsx";
+
+export const LIME = "#D4FF4F";
+export const PINK = "#FF4FA3";
+export const TANGERINE = "#FF8A3D";
+export const CREAM = "#FFF7E8";
 
 export interface Banner {
   key: string;
   kind: GameEvent["kind"] | "burn" | "skip" | "out";
   text: string;
-  tone: "neutral" | "gold" | "poo";
+  sub: string;
+  color: string;
   durationMs: number;
 }
 
-/** A board-wide emoji shower: 💩 when someone picks up, 🎉 when someone goes out. */
-export interface RainEffect {
-  seq: number;
+export interface Flash {
+  key: number;
+  /** A CSS background (radial gradient). */
+  color: string;
+}
+
+export interface Burst {
+  key: number;
+  kind: "fire";
+}
+
+export interface Rain {
+  key: number;
   kind: "poo" | "confetti";
   count: number;
 }
 
-interface Described {
-  banners: Banner[];
-  flash: TableFlash | null;
-  effect: RainEffect | null;
+export interface GameEffects {
+  banner: Banner | null;
+  flash: Flash | null;
+  bursts: Burst[];
+  rain: Rain | null;
+  badges: Record<string, { text: string; key: number }>;
 }
 
-const EFFECT_MS = 3000;
-const FLASH_MS = 1200;
+const BANNER_MS = 1750;
+const FLASH_MS = 1000;
+const BURST_MS = 1600;
+const RAIN_MS = 3600;
+const BADGE_MS = 2300;
+/** A burn is shown once the play has landed on the pile. */
+export const BURN_DELAY_MS = 500;
+
+const FLASH_BURN = "radial-gradient(circle at 50% 45%, rgba(255,138,61,.6), transparent 70%)";
+const FLASH_SHAME = "radial-gradient(circle at 50% 60%, rgba(255,79,163,.5), transparent 70%)";
+const FLASH_OVER = "radial-gradient(circle at 50% 40%, rgba(255,79,163,.55), transparent 70%)";
+const FLASH_WIN = "radial-gradient(circle at 50% 40%, rgba(212,255,79,.45), transparent 70%)";
 
 /**
- * Turns `state.lastEvent` into banners, haptics, a table flash and a
- * board-wide effect.
+ * Turns `state.lastEvent` into the board's effects: the display banner
+ * (queued, one at a time), the full-board flash, fire bursts, emoji rain,
+ * per-opponent reaction badges, and haptics.
  *
  * Dedupe: the last seen seq is kept in a ref AND in sessionStorage, so a
- * reload/reconnect (which re-delivers the same state) doesn't replay the
- * banner, while a brand-new tab still gets the "X starts" banner. Events
- * can arrive back-to-back (flip → play → burn), so banners queue.
+ * reload/reconnect (which re-delivers the same state) doesn't replay
+ * anything, while a brand-new tab still gets the "Go!" banner.
  */
-export function useGameEvents(
-  state: StateMessage,
-  selfId: string,
-  gameId: string,
-): { banner: Banner | null; flash: TableFlash | null; effect: RainEffect | null } {
+export function useGameEvents(state: StateMessage, selfId: string, gameId: string): GameEffects {
   const seenRef = useRef<number | null>(null);
   if (seenRef.current === null) seenRef.current = getLastSeenSeq(gameId);
 
   const [queue, setQueue] = useState<Banner[]>([]);
-  const [current, setCurrent] = useState<Banner | null>(null);
-  const [flash, setFlash] = useState<TableFlash | null>(null);
-  const [effect, setEffect] = useState<RainEffect | null>(null);
+  const [banner, setBanner] = useState<Banner | null>(null);
+  const [flash, setFlash] = useState<Flash | null>(null);
+  const [bursts, setBursts] = useState<Burst[]>([]);
+  const [rain, setRain] = useState<Rain | null>(null);
+  const [badges, setBadges] = useState<Record<string, { text: string; key: number }>>({});
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const event = state.lastEvent;
   const seq = event?.seq ?? 0;
@@ -66,191 +92,147 @@ export function useGameEvents(
     seenRef.current = seq;
     setLastSeenSeq(gameId, seq);
 
-    const described = describe(event, state, selfId);
-    if (described.banners.length > 0) setQueue((q) => [...q, ...described.banners]);
-    if (described.flash) setFlash(described.flash);
-    if (described.effect) setEffect(described.effect);
-    buzz(event, selfId);
-    // `state` is only read for names; keying on seq is intentional.
+    const later = (fn: () => void, ms: number) => {
+      const t = setTimeout(fn, ms);
+      timersRef.current.push(t);
+    };
+    const me = event.playerId === selfId;
+    const who = me ? "You" : state.players.find((p) => p.playerId === event.playerId)?.name ?? "Someone";
+    const key = (suffix: string) => `${seq}-${suffix}`;
+    const show = (b: Omit<Banner, "durationMs" | "key"> & { key?: string }) =>
+      setQueue((q) => [...q, { ...b, key: b.key ?? key(b.kind), durationMs: BANNER_MS }]);
+    const doFlash = (color: string) => {
+      setFlash({ key: seq, color });
+      later(() => setFlash((f) => (f?.key === seq ? null : f)), FLASH_MS);
+    };
+    const doRain = (kind: Rain["kind"], count: number) => {
+      setRain({ key: seq, kind, count });
+      later(() => setRain((r) => (r?.key === seq ? null : r)), RAIN_MS);
+    };
+    const doBadge = (text: string) => {
+      const pid = event.playerId;
+      setBadges((b) => ({ ...b, [pid]: { text, key: seq } }));
+      later(() => setBadges((b) => (b[pid]?.key === seq ? Object.fromEntries(Object.entries(b).filter(([k]) => k !== pid)) : b)), BADGE_MS);
+    };
+    const doFire = () => {
+      setBursts((bs) => [...bs, { key: seq, kind: "fire" }]);
+      later(() => setBursts((bs) => bs.filter((b) => b.key !== seq)), BURST_MS);
+    };
+    const amPoohead = state.phase === "complete" && !state.finishedOrder.includes(selfId);
+
+    switch (event.kind) {
+      case "start":
+        show({
+          kind: "start",
+          text: "Go!",
+          sub: me ? "You start. Lowest card energy." : `${who} starts. Lowest card energy.`,
+          color: LIME,
+        });
+        if (me) vibrateTurn();
+        break;
+
+      case "play":
+      case "flip": {
+        if (me) {
+          if (event.burned) vibrateBurn();
+          else vibrateAction();
+        }
+        if (event.skippedIds.length) {
+          const names = event.skippedIds.map((id) =>
+            id === selfId ? "You" : state.players.find((p) => p.playerId === id)?.name ?? "Someone",
+          );
+          const plural = names.length > 1 || names[0] === "You";
+          show({ kind: "skip", text: "Skip!", sub: `${joinNames(names)} sit${plural ? "" : "s"} this one out.`, color: CREAM });
+        }
+        if (event.wentOut) {
+          if (me) {
+            show({ kind: "out", text: "Out!", sub: "Clean hands. Sit back and gloat.", color: LIME });
+            doRain("confetti", 16);
+            vibrateWin();
+          } else {
+            doBadge("out! 🎉");
+          }
+        }
+        if (event.burned) {
+          later(() => {
+            doFlash(FLASH_BURN);
+            doFire();
+            show({
+              kind: "burn",
+              text: "BURN!",
+              sub: me ? "Pile's gone. Go again." : `${who} torched it.`,
+              color: TANGERINE,
+            });
+            if (!me) doBadge("burn 🔥");
+          }, BURN_DELAY_MS);
+        }
+        if (state.phase === "complete") {
+          later(() => {
+            doFlash(amPoohead ? FLASH_OVER : FLASH_WIN);
+            if (amPoohead) {
+              doRain("poo", 24);
+              vibrateLoss();
+            } else if (!me) {
+              doRain("confetti", 16);
+            }
+          }, event.burned ? BURN_DELAY_MS + 300 : 300);
+        }
+        break;
+      }
+
+      case "flip_fail": {
+        const n = event.pickedUp;
+        doFlash(FLASH_SHAME);
+        if (me) {
+          show({ kind: "flip_fail", text: "Nope.", sub: `Blind flip failed. +${n} 💩`, color: PINK });
+          doRain("poo", 24);
+          vibratePickup();
+        } else {
+          doBadge(`+${n} 💩`);
+          show({ kind: "flip_fail", text: `${who} whiffed`, sub: `Blind flip. +${n} to the hand.`, color: PINK });
+          doRain("poo", 16);
+        }
+        break;
+      }
+
+      case "pickup": {
+        const n = event.count;
+        doFlash(FLASH_SHAME);
+        if (me) {
+          show({ kind: "pickup", text: "Oof.", sub: `+${n} cards. That's a lot of 💩.`, color: PINK });
+          doRain("poo", 24);
+          vibratePickup();
+        } else {
+          doBadge(`+${n} 💩`);
+          show({ kind: "pickup", text: `${who} eats it`, sub: `+${n} to the hand.`, color: PINK });
+          doRain("poo", 16);
+        }
+        break;
+      }
+    }
+    // `state` is only read for names/phase; keying on seq is intentional.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seq, event, gameId, selfId]);
 
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => timers.forEach(clearTimeout);
+  }, []);
+
   // Promote the next queued banner when the current one expires…
   useEffect(() => {
-    if (current || queue.length === 0) return;
-    setCurrent(queue[0]);
+    if (banner || queue.length === 0) return;
+    setBanner(queue[0]);
     setQueue((q) => q.slice(1));
-  }, [current, queue]);
+  }, [banner, queue]);
 
-  // …and expire the current one. Kept separate from the effect above:
-  // if the timer lived there, the queue update would re-run the effect
-  // and its cleanup would cancel the timer before it fired.
+  // …and expire the current one (separate effect so the queue update
+  // above can't cancel the timer).
   useEffect(() => {
-    if (!current) return;
-    const t = setTimeout(() => setCurrent(null), current.durationMs);
+    if (!banner) return;
+    const t = setTimeout(() => setBanner(null), banner.durationMs);
     return () => clearTimeout(t);
-  }, [current]);
+  }, [banner]);
 
-  useEffect(() => {
-    if (!flash) return;
-    const t = setTimeout(() => setFlash(null), FLASH_MS);
-    return () => clearTimeout(t);
-  }, [flash]);
-
-  useEffect(() => {
-    if (!effect) return;
-    const t = setTimeout(() => setEffect(null), EFFECT_MS);
-    return () => clearTimeout(t);
-  }, [effect]);
-
-  return { banner: current, flash, effect };
-}
-
-function nameOf(state: StateMessage, playerId: string, selfId: string): string {
-  if (playerId === selfId) return "You";
-  return state.players.find((p) => p.playerId === playerId)?.name ?? "Someone";
-}
-
-/** How heavy the 💩 shower is for a pick-up of `n` cards. */
-function pooCount(n: number): number {
-  return Math.min(44, 10 + n * 2);
-}
-
-function describe(event: GameEvent, state: StateMessage, selfId: string): Described {
-  const me = event.playerId === selfId;
-  const who = nameOf(state, event.playerId, selfId);
-  const banners: Banner[] = [];
-  let flash: TableFlash | null = null;
-  let effect: RainEffect | null = null;
-  const key = (suffix: string) => `${event.seq}-${suffix}`;
-
-  switch (event.kind) {
-    case "start": {
-      banners.push({
-        key: key("start"),
-        kind: "start",
-        tone: me ? "gold" : "neutral",
-        durationMs: 2200,
-        text: me
-          ? event.lowestRank
-            ? `You have the lowest card — you start!`
-            : "You start!"
-          : event.lowestRank
-            ? `${who} has the lowest card and starts`
-            : `${who} starts`,
-      });
-      break;
-    }
-    case "play":
-    case "flip": {
-      const rankText =
-        event.kind === "flip"
-          ? formatRank(event.card.rank)
-          : event.cards.length > 1
-            ? `${event.cards.length} ${formatRank(event.cards[0].rank)}s`
-            : null;
-      if (event.kind === "flip") {
-        banners.push({
-          key: key("flip"),
-          kind: "flip",
-          tone: "neutral",
-          durationMs: 1600,
-          text: me ? `You flipped a ${rankText} — it plays!` : `${who} flipped a ${rankText}!`,
-        });
-      }
-      if (event.burned) {
-        flash = { seq: event.seq, kind: "burn" };
-        banners.push({
-          key: key("burn"),
-          kind: "burn",
-          tone: "gold",
-          durationMs: 1800,
-          text: me ? `🔥 You burned the pile!` : `🔥 ${who} burned the pile!`,
-        });
-      }
-      if (event.skippedIds.length > 0) {
-        const names = event.skippedIds.map((id) => nameOf(state, id, selfId));
-        banners.push({
-          key: key("skip"),
-          kind: "skip",
-          tone: "neutral",
-          durationMs: 1400,
-          text: `⏭ ${joinNames(names)} ${names.length === 1 && names[0] !== "You" ? "gets" : "get"} skipped`,
-        });
-      }
-      if (event.wentOut) {
-        const place = state.finishedOrder.indexOf(event.playerId) + 1;
-        effect = { seq: event.seq, kind: "confetti", count: me ? 30 : 16 };
-        banners.push({
-          key: key("out"),
-          kind: "out",
-          tone: "gold",
-          durationMs: 2400,
-          text: me
-            ? `🎉 You're out — ${ordinal(place)}!`
-            : `🎉 ${who} is out — ${ordinal(place)}!`,
-        });
-      } else if (event.kind === "play" && rankText && !event.burned && !me) {
-        // Multi-card plays by others get a small note; single plays are silent.
-        banners.push({
-          key: key("multi"),
-          kind: "play",
-          tone: "neutral",
-          durationMs: 1200,
-          text: `${who} played ${rankText}`,
-        });
-      }
-      break;
-    }
-    case "flip_fail": {
-      flash = { seq: event.seq, kind: "flip_fail" };
-      effect = { seq: event.seq, kind: "poo", count: pooCount(event.pickedUp) };
-      banners.push({
-        key: key("flipfail"),
-        kind: "flip_fail",
-        tone: "poo",
-        durationMs: 2400,
-        text: me
-          ? `😬 You flipped a ${formatRank(event.card.rank)} — pick up ${cardCount(event.pickedUp)}`
-          : `😬 ${who} flipped a ${formatRank(event.card.rank)} — picks up ${cardCount(event.pickedUp)}`,
-      });
-      break;
-    }
-    case "pickup": {
-      flash = { seq: event.seq, kind: "pickup" };
-      effect = { seq: event.seq, kind: "poo", count: pooCount(event.count) };
-      banners.push({
-        key: key("pickup"),
-        kind: "pickup",
-        tone: "poo",
-        durationMs: 2200,
-        text: me
-          ? `💩 You picked up ${cardCount(event.count)}`
-          : `💩 ${who} picked up ${cardCount(event.count)}`,
-      });
-      break;
-    }
-  }
-  return { banners, flash, effect };
-}
-
-function buzz(event: GameEvent, selfId: string): void {
-  const me = event.playerId === selfId;
-  switch (event.kind) {
-    case "start":
-      if (me) vibrateTurn();
-      break;
-    case "play":
-    case "flip":
-      if (me) {
-        if (event.wentOut) vibrateWin();
-        else if (event.burned) vibrateBurn();
-        else vibrateAction();
-      }
-      break;
-    case "flip_fail":
-    case "pickup":
-      if (me) vibratePickup();
-      break;
-  }
+  return { banner, flash, bursts, rain, badges };
 }

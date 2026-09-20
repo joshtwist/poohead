@@ -40,7 +40,7 @@ test("UK pub: 8s skip players", async ({ browser }) => {
     await expectBanner(bob.page, "skip");
     await expectMyTurn(carol.page);
     await expectNotMyTurn(bob.page);
-    await expectRequirement(carol.page, "Play 8 or higher");
+    await expectRequirement(carol.page, "8 or higher");
 
     // Carol hands the turn on with a 9
     await forceState(carol.page, { hand: cs("9d") });
