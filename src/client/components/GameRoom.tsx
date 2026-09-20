@@ -1,23 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  useParams,
-  useNavigate,
-  useLocation,
-  Navigate,
-} from "react-router-dom";
+import { useParams, useNavigate, useLocation, Navigate } from "react-router-dom";
 import type { GamePhase, PlayerIcon } from "../../shared/types.ts";
 import { getPlayerId, setPlayerId } from "../lib/storage.ts";
-import {
-  vibrateTurn,
-  vibrateError,
-  vibrateWin,
-  vibrateLoss,
-} from "../lib/haptics.ts";
+import { vibrateTurn, vibrateError } from "../lib/haptics.ts";
 import { useWebSocket } from "../hooks/useWebSocket.ts";
 import { useGameState } from "../hooks/useGameState.ts";
 import { JoinForm } from "./JoinForm.tsx";
 import { Lobby } from "./Lobby.tsx";
-import { DealAnimation } from "./DealAnimation.tsx";
 import { GameBoard } from "./GameBoard.tsx";
 import { GameComplete } from "./GameComplete.tsx";
 import { ErrorToast } from "./ErrorToast.tsx";
@@ -38,7 +27,6 @@ const END_HOLD_MS = 2600;
  * - Manages the WebSocket lifecycle.
  * - Routes to the appropriate child component based on phase.
  * - Handles redirect-on-play-again (with auto-join for the new game).
- * - Drives haptic feedback hooks (turn start, error, win/loss).
  *
  * Owns NO game logic -- pure orchestration.
  */
@@ -46,25 +34,15 @@ export function GameRoom() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const autoJoin = (location.state as { autoJoin?: AutoJoin } | null)
-    ?.autoJoin;
+  const autoJoin = (location.state as { autoJoin?: AutoJoin } | null)?.autoJoin;
 
   if (!gameId) {
     return <Navigate to="/" replace />;
   }
 
   // `key={gameId}` forces a clean remount when navigating between rooms
-  // (e.g. opening a rematch). Without it, refs like `autoJoinSentRef`
-  // persist across navigations and the auto-join into the new game
-  // silently no-ops because the OLD game's join was already sent.
-  return (
-    <GameRoomInner
-      key={gameId}
-      gameId={gameId}
-      navigate={navigate}
-      autoJoin={autoJoin}
-    />
-  );
+  // (e.g. opening a rematch), so per-room refs never leak across games.
+  return <GameRoomInner key={gameId} gameId={gameId} navigate={navigate} autoJoin={autoJoin} />;
 }
 
 function GameRoomInner({
@@ -76,24 +54,16 @@ function GameRoomInner({
   navigate: ReturnType<typeof useNavigate>;
   autoJoin: AutoJoin | undefined;
 }) {
-  // Resolve playerId + whether this is a returning player. Computed once.
   const [{ playerId, isReturning }] = useState(() => {
     const stored = getPlayerId(gameId);
-    if (stored) {
-      return { playerId: stored, isReturning: true };
-    }
+    if (stored) return { playerId: stored, isReturning: true };
     const fresh = crypto.randomUUID();
     setPlayerId(gameId, fresh);
     return { playerId: fresh, isReturning: false };
   });
 
-  const { state, gameComplete, lobbyInfo, error, errorSeq, processMessage } =
-    useGameState();
-  const { send, connected, failed, retry } = useWebSocket(
-    gameId,
-    playerId,
-    processMessage,
-  );
+  const { state, gameComplete, lobbyInfo, error, errorSeq, processMessage } = useGameState();
+  const { send, connected, failed, retry } = useWebSocket(gameId, playerId, processMessage);
 
   // After connecting, give the server a brief window to send state before we
   // assume this player isn't in the game. Avoids a join-form flash for
@@ -106,40 +76,25 @@ function GameRoomInner({
     return () => clearTimeout(t);
   }, [connected, state, isReturning]);
 
-  // Reset the wait flag if state arrives
   useEffect(() => {
     if (state) setWaitedForState(false);
   }, [state]);
 
-  // Navigate into a rematch, carrying the player's name + icon so the
-  // new room's JoinForm auto-submits. Triggered from the end-screen
-  // button (or, for the rematch creator, auto-fired when state.rematch
-  // flips from null to set — see GameComplete.tsx).
   function handleJoinRematch(rematch: RematchInfoView) {
     const me = state?.you;
     navigate(`/${rematch.gameId}`, {
       replace: true,
-      state: {
-        autoJoin: me ? { name: me.name, icon: me.icon } : undefined,
-      },
+      state: { autoJoin: me ? { name: me.name, icon: me.icon } : undefined },
     });
   }
 
   // Auto-join when we arrive from a play-again redirect
   const autoJoinSentRef = useRef(false);
   useEffect(() => {
-    if (!autoJoin) return;
-    if (autoJoinSentRef.current) return;
-    if (!connected) return;
+    if (!autoJoin || autoJoinSentRef.current || !connected) return;
     if (state?.players.some((p) => p.playerId === playerId)) return;
-
     autoJoinSentRef.current = true;
-    send({
-      type: "join",
-      playerId,
-      name: autoJoin.name,
-      icon: autoJoin.icon,
-    });
+    send({ type: "join", playerId, name: autoJoin.name, icon: autoJoin.icon });
   }, [autoJoin, connected, state, playerId, send]);
 
   // Haptic: it just became your turn
@@ -147,27 +102,15 @@ function GameRoomInner({
   useEffect(() => {
     if (!state) return;
     const current = state.currentPlayerId;
-    if (
-      state.phase === "playing" &&
-      current === playerId &&
-      prevCurrentRef.current !== playerId
-    ) {
+    if (state.phase === "playing" && current === playerId && prevCurrentRef.current !== playerId) {
       vibrateTurn();
     }
     prevCurrentRef.current = current;
   }, [state, playerId]);
 
-  // Haptic: server error
   useEffect(() => {
     if (error) vibrateError();
   }, [error]);
-
-  // Haptic: game over — a sad buzz for the 💩head, a cheer for the rest
-  useEffect(() => {
-    if (!gameComplete) return;
-    if (gameComplete.pooheadId === playerId) vibrateLoss();
-    else vibrateWin();
-  }, [gameComplete, playerId]);
 
   // When the last card lands, keep the table on screen for a moment so
   // everyone sees how it ended before the 💩head screen takes over.
@@ -187,7 +130,6 @@ function GameRoomInner({
 
   // ── Render ──────────────────────────────────────────────────────
 
-  // Reconnect attempts exhausted -- show a retry button
   if (failed && !state) {
     return (
       <>
@@ -197,83 +139,57 @@ function GameRoomInner({
     );
   }
 
-  // Not connected yet
   if (!connected && !state && !lobbyInfo) {
     return (
       <>
         <ErrorToast message={error} />
-        <LoadingScreen text="Connecting..." />
+        <LoadingScreen text="Connecting…" />
       </>
     );
   }
 
-  const playerInState =
-    state?.players.some((p) => p.playerId === playerId) ?? false;
+  const playerInState = state?.players.some((p) => p.playerId === playerId) ?? false;
 
   if (!state || !playerInState) {
-    // Still within the server response window -- show loader to avoid flash.
-    // lobbyInfo indicates we're a non-player (server told us so) -> safe to
-    // show join form immediately.
     if (!waitedForState && !autoJoin && !lobbyInfo) {
       return (
         <>
           <ErrorToast message={error} />
-          <LoadingScreen text={isReturning ? "Reconnecting..." : "Loading..."} />
+          <LoadingScreen text={isReturning ? "Reconnecting…" : "Loading…"} />
         </>
       );
     }
-
-    // Auto-joining from a redirect: show loader while server processes
     if (autoJoin && !autoJoinSentRef.current) {
       return (
         <>
           <ErrorToast message={error} />
-          <LoadingScreen text="Rejoining..." />
+          <LoadingScreen text="Rejoining…" />
         </>
       );
     }
-
-    // Derive taken icons from either the player state (if we're already in it)
-    // or the lobby_info the server sends to non-player connections.
-    const takenIcons =
-      state?.players.map((p) => p.icon) ??
-      lobbyInfo?.players.map((p) => p.icon) ??
-      [];
+    const takenIcons = state?.players.map((p) => p.icon) ?? lobbyInfo?.players.map((p) => p.icon) ?? [];
     return (
       <>
         <ErrorToast message={error} />
-        <JoinForm
-          playerId={playerId}
-          send={send}
-          takenIcons={takenIcons}
-        />
+        <JoinForm playerId={playerId} send={send} takenIcons={takenIcons} />
       </>
     );
   }
 
-  const showBoard =
-    state.phase === "swapping" ||
-    state.phase === "playing" ||
-    (state.phase === "complete" && (holdBoard || !gameComplete));
+  const showBoard = state.phase !== "lobby";
+  const showEnd = state.phase === "complete" && gameComplete && !holdBoard;
 
-  // In game -- render by phase
   return (
     <>
       <ErrorToast message={error} />
-      {state.phase === "lobby" && (
-        <Lobby state={state} gameId={gameId} send={send} />
-      )}
-      {state.phase === "dealing" && <DealAnimation state={state} />}
+      {state.phase === "lobby" && <Lobby state={state} gameId={gameId} send={send} />}
       {showBoard && (
-        <GameBoard state={state} gameId={gameId} send={send} errorSeq={errorSeq} />
-      )}
-      {state.phase === "complete" && gameComplete && !holdBoard && (
-        <GameComplete
-          state={state}
-          result={gameComplete}
-          send={send}
-          onJoinRematch={handleJoinRematch}
-        />
+        <div className="relative flex flex-1 min-h-0 flex-col">
+          <GameBoard state={state} gameId={gameId} send={send} errorSeq={errorSeq} />
+          {showEnd && (
+            <GameComplete state={state} result={gameComplete} send={send} onJoinRematch={handleJoinRematch} />
+          )}
+        </div>
       )}
     </>
   );
@@ -282,7 +198,8 @@ function GameRoomInner({
 function LoadingScreen({ text }: { text: string }) {
   return (
     <div className="flex flex-1 items-center justify-center">
-      <div className="text-slate-400" data-testid="loading-screen">
+      <div className="text-muted font-extrabold" data-testid="loading-screen">
+        <span className="anim-floaty mr-2">🃏</span>
         {text}
       </div>
     </div>
@@ -292,20 +209,13 @@ function LoadingScreen({ text }: { text: string }) {
 function ConnectionFailedScreen({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="flex flex-1 items-center justify-center px-6">
-      <div
-        className="flex flex-col items-center gap-4 text-center"
-        data-testid="connection-failed"
-      >
-        <div className="text-slate-200 font-semibold">
-          Couldn't connect to the game
-        </div>
-        <div className="text-slate-400 text-sm max-w-xs">
-          Check your link and connection, then try again.
-        </div>
+      <div className="flex flex-col items-center gap-4 text-center" data-testid="connection-failed">
+        <div className="font-display font-extrabold text-2xl">Couldn't reach the table</div>
+        <div className="text-muted text-sm max-w-xs">Check your link and connection, then try again.</div>
         <button
           onClick={onRetry}
           data-testid="retry-btn"
-          className="mt-2 px-5 py-2.5 bg-gold hover:bg-amber-400 text-slate-900 font-semibold rounded-xl transition-colors cursor-pointer"
+          className="btn-lime mt-2 px-6 h-12 rounded-[18px] text-lg cursor-pointer border-0"
         >
           Try again
         </button>

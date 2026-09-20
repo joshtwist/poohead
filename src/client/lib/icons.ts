@@ -1,70 +1,47 @@
-import {
-  Cat,
-  Dog,
-  Bird,
-  Fish,
-  Rabbit,
-  Snail,
-  Bug,
-  Flame,
-  Zap,
-  Star,
-  Moon,
-  Sun,
-  Heart,
-  Skull,
-  Ghost,
-  Rocket,
-  Crown,
-  Gem,
-  Anchor,
-  Gamepad2,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import type { PlayerIcon } from "../../shared/types.ts";
 
-export const ICON_MAP: Record<PlayerIcon, LucideIcon> = {
-  cat: Cat,
-  dog: Dog,
-  bird: Bird,
-  fish: Fish,
-  rabbit: Rabbit,
-  snail: Snail,
-  bug: Bug,
-  flame: Flame,
-  zap: Zap,
-  star: Star,
-  moon: Moon,
-  sun: Sun,
-  heart: Heart,
-  skull: Skull,
-  ghost: Ghost,
-  rocket: Rocket,
-  crown: Crown,
-  gem: Gem,
-  anchor: Anchor,
-  "gamepad-2": Gamepad2,
+/** Avatar glyph for each pickable icon. */
+export const ICON_EMOJI: Record<PlayerIcon, string> = {
+  cat: "🐱",
+  dog: "🐶",
+  bird: "🐦",
+  fish: "🐟",
+  rabbit: "🐰",
+  snail: "🐌",
+  bug: "🐛",
+  flame: "🔥",
+  zap: "⚡",
+  star: "⭐",
+  moon: "🌙",
+  sun: "☀️",
+  heart: "❤️",
+  skull: "💀",
+  ghost: "👻",
+  rocket: "🚀",
+  crown: "👑",
+  gem: "💎",
+  anchor: "⚓",
+  "gamepad-2": "🎮",
 };
 
-export const ICON_COLORS: string[] = [
-  "bg-rose-500",
-  "bg-orange-500",
-  "bg-amber-500",
-  "bg-yellow-500",
-  "bg-lime-500",
-  "bg-green-500",
-  "bg-emerald-500",
-  "bg-teal-500",
-  "bg-cyan-500",
-  "bg-sky-500",
-  "bg-blue-500",
-  "bg-indigo-500",
-  "bg-violet-500",
-  "bg-purple-500",
-  "bg-fuchsia-500",
-  "bg-pink-500",
-  "bg-red-500",
-  "bg-orange-600",
-  "bg-teal-600",
-  "bg-blue-600",
-];
+/** You are always hot pink; everyone else takes these in seat order. */
+export const ME_COLOR = "#FF4FA3";
+export const OPPONENT_COLORS = ["#FF8A3D", "#4FC3FF", "#B76CFF", "#59E3A7"];
+
+/** Disc colours for the icon picker, cycled by index. */
+export const PICKER_COLORS = [ME_COLOR, ...OPPONENT_COLORS];
+
+/**
+ * Colour for a player as seen from `selfId`: you are pink, opponents are
+ * coloured by their seat order among the other players.
+ */
+export function playerColor(
+  players: { playerId: string }[],
+  playerId: string,
+  selfId: string,
+): string {
+  if (playerId === selfId) return ME_COLOR;
+  const others = players.filter((p) => p.playerId !== selfId);
+  const idx = others.findIndex((p) => p.playerId === playerId);
+  return OPPONENT_COLORS[(idx >= 0 ? idx : 0) % OPPONENT_COLORS.length];
+}

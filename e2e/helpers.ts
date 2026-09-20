@@ -251,7 +251,7 @@ export async function playFaceUp(page: Page, codes: string[]): Promise<void> {
 
 /**
  * Pick up the pile. When the player still has a legal play the button
- * arms first ("Really pick up?") and needs a second tap.
+ * arms first ("Really?") and needs a second tap.
  */
 export async function pickUp(page: Page): Promise<void> {
   const btn = page.getByTestId("pickup-btn");

@@ -37,12 +37,12 @@ test("reload resumes the game in swapping and in playing", async ({ browser }) =
     // Into play with a known pile (Millybims: 7 on a King → King or lower)
     await forceState(alice.page, { pile: [cs("Kd"), cs("7h")], phase: "playing", makeCurrent: true });
     await waitForPhase(alice.page, "playing");
-    await expectRequirement(alice.page, "Play King or lower");
+    await expectRequirement(alice.page, "King or lower");
 
     await alice.page.reload();
     await waitForPhase(alice.page, "playing");
     await expectMyTurn(alice.page);
-    await expectRequirement(alice.page, "Play King or lower");
+    await expectRequirement(alice.page, "King or lower");
     await expect(handCard(alice.page, "2h")).toBeVisible();
     await expect(pileTop(alice.page, "7h")).toBeVisible();
     await expect(alice.page.getByTestId("pile")).toHaveAttribute("data-count", "2");

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card } from "./Card.tsx";
+import { HeroFan } from "./HeroFan.tsx";
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -20,48 +20,51 @@ export function HomePage() {
   }
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col items-center justify-center px-6 overflow-y-auto">
-      <div className="flex flex-col items-center gap-8 max-w-sm w-full py-8">
-        {/* Logo area */}
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-20 h-20 rounded-2xl bg-felt-light flex items-center justify-center shadow-lg text-5xl">
-            <span aria-hidden>💩</span>
-          </div>
-          <h1 className="text-4xl font-bold tracking-tight">
-            <span aria-hidden>💩</span>head
+    <div className="cq relative flex-1 min-h-0 overflow-y-auto no-scrollbar">
+      <div className="dot-grid absolute inset-0 pointer-events-none" />
+      <div
+        className="relative min-h-full flex flex-col items-center justify-between text-center"
+        style={{ padding: "clamp(70px,16cqw,120px) clamp(20px,6cqw,44px) clamp(56px,10cqw,72px)" }}
+      >
+        <div className="flex flex-col items-center" style={{ gap: "clamp(8px,2cqw,14px)" }}>
+          <h1
+            className="font-display font-extrabold text-cream"
+            style={{
+              fontSize: "clamp(58px,17cqw,104px)",
+              lineHeight: 0.9,
+              letterSpacing: "-.045em",
+              textShadow: "0 6px 0 rgba(0,0,0,.25)",
+            }}
+          >
+            <span className="anim-wiggle" aria-hidden>
+              💩
+            </span>
+            <span>head</span>
           </h1>
-          <p className="text-slate-300 text-center text-lg">
-            Shed your cards. Don't be the 💩head.
+          <p
+            className="font-display font-semibold text-lime whitespace-nowrap"
+            style={{ fontSize: "clamp(16px,4.3cqw,24px)", letterSpacing: "-.01em" }}
+          >
+            Shed your cards. Don't be the <span className="whitespace-nowrap">💩head.</span>
           </p>
         </div>
 
-        {/* Card table visual */}
-        <div className="w-full rounded-2xl bg-felt-light/30 border border-felt-light/40 p-8 flex flex-col items-center gap-6">
-          <div className="flex gap-2 items-end">
-            <Card faceDown size="sm" />
-            <Card card={{ suit: "spades", rank: "2" }} size="sm" wild />
-            <Card card={{ suit: "hearts", rank: "7" }} size="sm" />
-            <Card card={{ suit: "clubs", rank: "10" }} size="sm" wild />
-            <Card faceDown size="sm" />
-          </div>
+        <HeroFan style={{ width: "min(21cqw,124px)", height: "min(29.3cqw,173px)" }} />
 
+        <div className="flex flex-col gap-3.5 w-full max-w-[420px]">
           <button
             data-testid="create-game-btn"
             onClick={handleCreate}
             disabled={creating}
-            className="w-full py-4 px-6 bg-gold hover:bg-amber-400 active:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-bold text-lg rounded-xl transition-colors duration-200 shadow-lg cursor-pointer"
+            className="btn-lime w-full rounded-[22px] border-0 cursor-pointer"
+            style={{ height: "clamp(58px,14cqw,72px)", fontSize: "clamp(19px,5cqw,26px)", letterSpacing: "-.01em" }}
           >
-            {creating ? "Creating..." : "Create New Game"}
+            {creating ? "Setting the table…" : "Start a game"}
           </button>
-
-          <p className="text-slate-400 text-sm text-center">
-            2–5 players · phone, tablet or laptop · no accounts, just a link
+          <p className="text-muted font-bold" style={{ fontSize: "clamp(13px,3.4cqw,16px)" }}>
+            2–5 players · no accounts · just a link
           </p>
         </div>
-
-        <p className="text-slate-500 text-xs text-center max-w-xs">
-          Also known as Shithead, Karma or Palace. Three rule sets to pick from in the lobby.
-        </p>
       </div>
     </div>
   );

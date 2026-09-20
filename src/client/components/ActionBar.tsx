@@ -1,6 +1,3 @@
-import { Check, Hand, Play, RotateCcw, Zap } from "lucide-react";
-import type { Layout } from "../lib/layout.ts";
-
 export type ActionModel =
   | {
       kind: "swap";
@@ -19,7 +16,9 @@ export type ActionModel =
       playDisabled: boolean;
       onPlay: () => void;
       pickupLabel: string;
+      /** Nothing playable: the pick-up is the only move (pink, pulsing). */
       pickupPrimary: boolean;
+      /** First tap armed the pick-up ("Really?"). */
       pickupArmed: boolean;
       canPickUp: boolean;
       onPickUp: () => void;
@@ -35,61 +34,50 @@ export type ActionModel =
       onPickUp: () => void;
       hint: string;
     }
-  | { kind: "waiting"; text: string; hint?: string }
-  | { kind: "out"; text: string };
+  | { kind: "waiting"; text: string; emoji: string; hint?: string }
+  | { kind: "out"; text: string; emoji: string };
 
 interface ActionBarProps {
   model: ActionModel;
-  layout: Layout;
 }
 
-const PRIMARY =
-  "bg-gold hover:bg-amber-400 active:bg-amber-500 text-slate-900 font-bold shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none";
-const SECONDARY =
-  "bg-slate-800/80 hover:bg-slate-700 active:bg-slate-900 border border-slate-600/60 text-white font-semibold disabled:opacity-40 disabled:cursor-not-allowed";
-const DANGER =
-  "bg-poo hover:bg-poo-light active:bg-poo text-white font-bold shadow-lg disabled:opacity-40 disabled:cursor-not-allowed";
+const BTN = "btn-action h-full min-w-0 border-0 cursor-pointer";
+const BTN_PAD = { padding: "0 clamp(12px,3.5cqw,22px)", fontSize: "clamp(16px,4.4cqw,21px)" } as const;
 
 /**
  * Fixed-height bar of contextual actions. Every game verb lives here so
  * the cards themselves only ever need a single tap to select.
  */
-export function ActionBar({ model, layout }: ActionBarProps) {
-  const h = layout.barBtn;
-  const btnBase = `rounded-xl px-4 flex items-center justify-center gap-2 cursor-pointer transition-colors duration-150 text-[15px] tablet:text-base`;
-  const hint =
-    model.kind === "out" ? null : model.kind === "waiting" ? model.hint ?? null : model.hint;
+export function ActionBar({ model }: ActionBarProps) {
+  const hint = model.kind === "out" ? "" : model.kind === "waiting" ? (model.hint ?? "") : model.hint;
 
   return (
     <div
       data-testid="action-bar"
       data-kind={model.kind}
-      className="flex-shrink-0 flex flex-col items-center gap-1 px-3 pt-1 pb-2 compact:pb-1"
-      style={{ minHeight: h + 28 }}
+      className="flex-shrink-0 flex flex-col items-center gap-1.5 mt-1"
     >
-      <div className="flex items-center justify-center gap-2 w-full max-w-[560px]">
+      <div className="flex gap-2 w-full max-w-[560px]" style={{ height: "clamp(52px,13cqw,64px)" }}>
         {model.kind === "swap" && (
           <>
             <button
               data-testid="ready-btn"
               onClick={model.onReady}
               disabled={model.ready}
-              className={`${btnBase} ${model.ready ? SECONDARY : PRIMARY} flex-1`}
-              style={{ height: h }}
+              className={`${BTN} ${model.ready ? "secondary" : "primary"} flex-1`}
+              style={BTN_PAD}
             >
-              <Check className="w-5 h-5" strokeWidth={2.5} />
-              {model.ready ? `Ready (${model.readyCount}/${model.total})` : "Ready"}
+              {model.ready ? `Ready · ${model.readyCount}/${model.total}` : "Ready"}
             </button>
             {model.isHost && model.ready && (
               <button
                 data-testid="force-start-btn"
                 onClick={model.onForceStart}
                 disabled={!model.canForceStart}
-                className={`${btnBase} ${SECONDARY}`}
-                style={{ height: h }}
+                className={`${BTN} secondary`}
+                style={{ ...BTN_PAD, flex: 0.8 }}
                 title="Start without waiting for players who have dropped"
               >
-                <Play className="w-4 h-4" fill="currentColor" />
                 Start now
               </button>
             )}
@@ -102,8 +90,8 @@ export function ActionBar({ model, layout }: ActionBarProps) {
               <button
                 data-testid="select-all-chip"
                 onClick={model.selectAll.onSelect}
-                className={`${btnBase} ${SECONDARY} text-sm px-3`}
-                style={{ height: h }}
+                className={`${BTN} secondary`}
+                style={{ ...BTN_PAD, flex: 0.9, fontSize: "clamp(13px,3.6cqw,17px)" }}
               >
                 {model.selectAll.label}
               </button>
@@ -112,10 +100,9 @@ export function ActionBar({ model, layout }: ActionBarProps) {
               data-testid="play-btn"
               onClick={model.onPlay}
               disabled={model.playDisabled}
-              className={`${btnBase} ${PRIMARY} flex-1`}
-              style={{ height: h }}
+              className={`${BTN} primary`}
+              style={{ ...BTN_PAD, flex: 2 }}
             >
-              <Play className="w-5 h-5" fill="currentColor" />
               {model.playLabel}
             </button>
             <button
@@ -123,13 +110,12 @@ export function ActionBar({ model, layout }: ActionBarProps) {
               data-armed={model.pickupArmed ? "true" : undefined}
               onClick={model.onPickUp}
               disabled={!model.canPickUp}
-              className={`${btnBase} ${model.pickupPrimary || model.pickupArmed ? DANGER : SECONDARY} ${
-                model.pickupPrimary ? "flex-1 pulse-gold" : ""
+              className={`${BTN} ${model.pickupPrimary || model.pickupArmed ? "danger" : "secondary"} ${
+                model.pickupPrimary ? "pulse-pink" : ""
               }`}
-              style={{ height: h }}
+              style={{ ...BTN_PAD, flex: model.pickupPrimary ? 1.4 : 1 }}
             >
-              <Hand className="w-5 h-5" />
-              {model.pickupArmed ? "Really pick up?" : model.pickupLabel}
+              {model.pickupArmed ? "Really?" : model.pickupLabel}
             </button>
           </>
         )}
@@ -140,51 +126,40 @@ export function ActionBar({ model, layout }: ActionBarProps) {
               data-testid="flip-btn"
               onClick={model.onFlip}
               disabled={model.flipDisabled}
-              className={`${btnBase} ${PRIMARY} flex-1`}
-              style={{ height: h }}
+              className={`${BTN} primary`}
+              style={{ ...BTN_PAD, flex: 2 }}
             >
-              <Zap className="w-5 h-5" fill="currentColor" />
               Flip
             </button>
             <button
               data-testid="pickup-btn"
               onClick={model.onPickUp}
               disabled={!model.canPickUp}
-              className={`${btnBase} ${SECONDARY}`}
-              style={{ height: h }}
+              className={`${BTN} secondary`}
+              style={{ ...BTN_PAD, flex: 1 }}
             >
-              <Hand className="w-5 h-5" />
               {model.pickupLabel}
             </button>
           </>
         )}
 
-        {model.kind === "waiting" && (
+        {(model.kind === "waiting" || model.kind === "out") && (
           <div
-            className="flex items-center gap-2 text-slate-300/90 text-sm compact:text-xs"
-            style={{ height: h }}
-            data-testid="waiting-text"
+            className="flex-1 flex items-center justify-center gap-2 text-muted font-extrabold"
+            style={{ fontSize: "clamp(14px,3.6cqw,17px)" }}
+            data-testid={model.kind === "out" ? "out-text" : "waiting-text"}
           >
-            <RotateCcw className="w-4 h-4 opacity-60" />
-            {model.text}
-          </div>
-        )}
-
-        {model.kind === "out" && (
-          <div
-            className="flex items-center gap-2 text-gold text-sm font-semibold"
-            style={{ height: h }}
-            data-testid="out-text"
-          >
+            <span className="anim-floaty">{model.emoji}</span>
             {model.text}
           </div>
         )}
       </div>
       <div
-        className="h-4 text-[11px] tablet:text-xs text-slate-300/70 text-center px-2 truncate w-full max-w-[560px]"
+        className="h-4 text-muted font-bold text-center whitespace-nowrap overflow-hidden text-ellipsis max-w-full"
+        style={{ fontSize: "clamp(11px,3cqw,13px)" }}
         data-testid="action-hint"
       >
-        {hint ?? ""}
+        {hint}
       </div>
     </div>
   );

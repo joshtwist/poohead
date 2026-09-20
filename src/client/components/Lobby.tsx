@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
-import { Users, Play } from "lucide-react";
 import type { StateMessage, ClientMessage } from "../../shared/protocol.ts";
 import { MAX_PLAYERS, MIN_PLAYERS } from "../../shared/types.ts";
-import { DEFAULT_RULES, type RuleSetId } from "../../shared/rules.ts";
-import { ICON_MAP, ICON_COLORS } from "../lib/icons.ts";
+import { DEFAULT_RULES, RULE_SETS, type RuleSetId } from "../../shared/rules.ts";
+import { ICON_EMOJI, playerColor } from "../lib/icons.ts";
 import { ShareButton } from "./ShareButton.tsx";
 import { RulesPicker } from "./RulesPicker.tsx";
+import { HeroFan } from "./HeroFan.tsx";
 
 interface LobbyProps {
   state: StateMessage;
@@ -14,11 +13,15 @@ interface LobbyProps {
   send: (msg: ClientMessage) => void;
 }
 
+/** How many empty "waiting" seats to show under the players. */
+const EMPTY_SEATS_SHOWN = 2;
+
 export function Lobby({ state, gameId, send }: LobbyProps) {
   const [rules, setRules] = useState<RuleSetId>(DEFAULT_RULES);
   const { you, players } = state;
   const canStart = players.length >= MIN_PLAYERS;
-  const missing = MIN_PLAYERS - players.length;
+  const host = players[0];
+  const emptySeats = Math.min(EMPTY_SEATS_SHOWN, MAX_PLAYERS - players.length);
 
   function handleStart() {
     if (!canStart) return;
@@ -26,116 +29,131 @@ export function Lobby({ state, gameId, send }: LobbyProps) {
   }
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col overflow-y-auto">
-      <div className="flex flex-col px-6 py-8 max-w-lg w-full mx-auto">
-        <div className="text-center mb-6">
-          <h1 className="text-3xl font-bold">
-            <span aria-hidden>💩</span>head lobby
-          </h1>
-          <p className="text-slate-400 mt-1">Waiting for players to join</p>
-        </div>
-
-        {/* Player list */}
-        <div className="bg-slate-800/60 border border-slate-700 rounded-2xl p-4 mb-6">
-          <div className="flex items-center gap-2 mb-3 text-slate-300">
-            <Users className="w-4 h-4" />
-            <span className="text-sm font-medium" data-testid="lobby-count">
-              Players ({players.length}/{MAX_PLAYERS})
-            </span>
-          </div>
-          <div className="flex flex-col gap-2">
-            {players.map((player, i) => {
-              const Icon = ICON_MAP[player.icon];
-              const color = ICON_COLORS[i % ICON_COLORS.length];
-              const isYou = player.playerId === you.playerId;
-              const isCreator = i === 0;
-              return (
-                <motion.div
-                  key={player.playerId}
-                  data-testid={`lobby-player-${player.name}`}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="flex items-center gap-3 bg-slate-900/60 rounded-xl p-3"
-                >
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${color}`}
-                  >
-                    <Icon className="w-5 h-5 text-white" />
-                  </div>
-                  <span className="font-medium flex-1">
-                    {player.name}
-                    {isYou && (
-                      <span className="text-slate-400 text-sm ml-1">(you)</span>
-                    )}
-                  </span>
-                  {isCreator && (
-                    <span className="text-xs bg-gold/20 text-gold px-2 py-0.5 rounded-full">
-                      Host
-                    </span>
-                  )}
-                  {!player.connected && (
-                    <span className="text-xs text-slate-500">offline</span>
-                  )}
-                </motion.div>
-              );
-            })}
-            {Array.from({ length: Math.max(0, MAX_PLAYERS - players.length) }).map((_, i) => (
-              <div
-                key={`empty-${i}`}
-                className="flex items-center gap-3 bg-slate-900/30 border border-dashed border-slate-700 rounded-xl p-3"
-              >
-                <div className="w-10 h-10 rounded-full bg-slate-800 flex-shrink-0" />
-                <span className="text-slate-500 text-sm">Waiting...</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Share link -- primary CTA while there aren't enough players yet,
-            secondary once Start Game becomes actionable. */}
-        <div className="mb-3">
-          <ShareButton
-            gameId={gameId}
-            emphasis={canStart ? "secondary" : "primary"}
-          />
-        </div>
-        {!canStart && (
-          <p className="text-center text-slate-400 text-sm mb-6">
-            Tap above to invite friends — 💩head needs {MIN_PLAYERS} to {MAX_PLAYERS} players
-          </p>
-        )}
-        {canStart && <div className="mb-3" />}
-
-        {/* Host controls */}
-        {you.isCreator ? (
-          <div className="bg-slate-800/60 border border-slate-700 rounded-2xl p-4 flex flex-col gap-4">
-            <div>
-              <label className="text-sm font-medium text-slate-300 block mb-2">
-                Rules
-              </label>
-              <RulesPicker value={rules} onChange={setRules} />
-            </div>
-
-            <button
-              data-testid="start-game-btn"
-              onClick={handleStart}
-              disabled={!canStart}
-              className="w-full py-4 px-6 bg-gold hover:bg-amber-400 active:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-900 font-bold text-lg rounded-xl transition-colors duration-200 shadow-lg cursor-pointer flex items-center justify-center gap-2"
+    <div className="cq relative flex-1 min-h-0 overflow-y-auto no-scrollbar">
+      <div className="dot-grid absolute inset-0 pointer-events-none" />
+      <div
+        className="relative min-h-full flex flex-col max-w-[560px] mx-auto"
+        style={{ padding: "clamp(28px,7cqw,56px) clamp(18px,5cqw,40px) clamp(24px,5cqw,40px)", gap: "clamp(14px,3.5cqw,22px)" }}
+      >
+        {/* Title + count + small hero */}
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <h1
+              className="font-display font-extrabold"
+              style={{ fontSize: "clamp(36px,10cqw,58px)", lineHeight: 0.95, letterSpacing: "-.04em" }}
             >
-              <Play className="w-5 h-5" fill="currentColor" />
-              {canStart
-                ? "Deal the cards"
-                : `Need ${missing} more player${missing === 1 ? "" : "s"}`}
-            </button>
+              The lobby
+            </h1>
+            <div
+              className="mt-1.5 font-extrabold text-lime"
+              style={{ fontSize: "clamp(14px,3.8cqw,18px)" }}
+              data-testid="lobby-count"
+            >
+              {players.length} of {MAX_PLAYERS} at the table
+            </div>
           </div>
+          <HeroFan style={{ width: "min(12cqw,70px)", height: "min(16.7cqw,98px)", marginRight: "min(6cqw,40px)" }} />
+        </div>
+
+        {/* Seats */}
+        <div className="flex flex-col gap-2">
+          {players.map((player, i) => {
+            const isYou = player.playerId === you.playerId;
+            return (
+              <div
+                key={player.playerId}
+                data-testid={`lobby-player-${player.name}`}
+                className="anim-slide-in flex items-center gap-3 rounded-[20px] pl-2 pr-3.5"
+                style={{
+                  height: "clamp(52px,13cqw,66px)",
+                  background: "rgba(255,247,232,.1)",
+                  border: "2px solid rgba(255,247,232,.12)",
+                  animationDelay: `${i * 40}ms`,
+                }}
+              >
+                <div
+                  className="rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{
+                    width: "clamp(38px,9.5cqw,48px)",
+                    height: "clamp(38px,9.5cqw,48px)",
+                    background: playerColor(players, player.playerId, you.playerId),
+                    fontSize: "clamp(20px,5cqw,26px)",
+                    boxShadow: "inset 0 -3px 0 rgba(0,0,0,.18)",
+                  }}
+                >
+                  {ICON_EMOJI[player.icon]}
+                </div>
+                <div
+                  className="flex-1 font-display font-bold truncate"
+                  style={{ fontSize: "clamp(17px,4.4cqw,21px)", letterSpacing: "-.01em" }}
+                >
+                  {isYou ? "You" : player.name}
+                  {!player.connected && <span className="text-muted text-sm font-body ml-2">offline</span>}
+                </div>
+                {i === 0 && (
+                  <div className="text-xs font-black tracking-[.06em] uppercase text-ink bg-lime px-2.5 py-1 rounded-full">
+                    Host
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {Array.from({ length: emptySeats }).map((_, i) => (
+            <div
+              key={`empty-${i}`}
+              className="flex items-center gap-3 rounded-[20px] pl-2 pr-3.5"
+              style={{ height: "clamp(52px,13cqw,66px)", border: "2px dashed rgba(255,247,232,.2)" }}
+            >
+              <div
+                className="rounded-full flex-shrink-0"
+                style={{
+                  width: "clamp(38px,9.5cqw,48px)",
+                  height: "clamp(38px,9.5cqw,48px)",
+                  background: "rgba(255,247,232,.08)",
+                }}
+              />
+              <div className="flex-1 font-display font-bold text-muted" style={{ fontSize: "clamp(17px,4.4cqw,21px)" }}>
+                Waiting for a mate…
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <ShareButton gameId={gameId} />
+
+        {/* House rules */}
+        <div className="flex-1 min-h-0 flex flex-col gap-2.5">
+          <div className="text-xs font-black tracking-[.1em] uppercase text-muted">House rules</div>
+          {you.isCreator ? (
+            <RulesPicker value={rules} onChange={setRules} />
+          ) : (
+            <div
+              className="rounded-2xl px-4 py-3 text-muted font-bold"
+              style={{ background: "rgba(255,247,232,.06)", border: "2px solid rgba(255,247,232,.14)", fontSize: "clamp(13px,3.4cqw,15px)" }}
+            >
+              {host?.name ?? "The host"} picks the rules. Three flavours: {RULE_SETS.millybims.name},{" "}
+              {RULE_SETS.ukpub.name} or {RULE_SETS.standard.name}.
+            </div>
+          )}
+        </div>
+
+        {you.isCreator ? (
+          <button
+            data-testid="start-game-btn"
+            onClick={handleStart}
+            disabled={!canStart}
+            className="btn-lime w-full rounded-[22px] border-0 cursor-pointer"
+            style={{ height: "clamp(58px,14cqw,72px)", fontSize: "clamp(19px,5cqw,26px)" }}
+          >
+            {canStart ? "Deal the cards" : "Need one more player…"}
+          </button>
         ) : (
-          <div className="bg-slate-800/60 border border-slate-700 rounded-2xl p-4 flex flex-col gap-3">
-            <p className="text-slate-400 text-center">
-              Waiting for the host to deal…
-            </p>
-            <p className="text-xs text-slate-500 text-center">
-              The host picks the rules. Three flavours: Millybims (house rules), UK pub, or Standard.
-            </p>
+          <div
+            className="w-full rounded-[22px] flex items-center justify-center font-display font-extrabold text-muted"
+            style={{ height: "clamp(58px,14cqw,72px)", fontSize: "clamp(17px,4.4cqw,22px)", background: "rgba(255,247,232,.1)" }}
+          >
+            <span className="anim-floaty mr-2">🃏</span>
+            Waiting for {host?.name ?? "the host"} to deal…
           </div>
         )}
       </div>

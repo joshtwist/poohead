@@ -1,46 +1,39 @@
-import { motion, AnimatePresence } from "framer-motion";
 import type { Banner } from "../hooks/useGameEvents.ts";
 
 /**
- * Short-lived pill announcing what just happened (burn, pick-up, skip,
- * someone going out…). Overlaid on the table so it costs no layout.
+ * The big display-type banner ("BURN!", "Oof.") that slams in over the
+ * table, plus its sub-line. Lives in the FX layer so it costs no layout.
  */
-export function EventBanner({
-  banner,
-  position = "table",
-}: {
-  banner: Banner | null;
-  /** "table" floats over the stock/pile; "high" sits just under the status row (side-by-side layouts). */
-  position?: "table" | "high";
-}) {
+export function EventBanner({ banner }: { banner: Banner | null }) {
+  if (!banner) return null;
   return (
     <div
-      className={`pointer-events-none absolute inset-x-0 flex justify-center z-40 px-4 ${
-        position === "high" ? "top-[22%]" : "top-[38%]"
-      }`}
+      key={banner.key}
+      data-testid="event-banner"
+      data-kind={banner.kind}
+      className="anim-banner-in absolute left-1/2 top-[44%] text-center pointer-events-none"
+      style={{ transform: "translate(-50%,-50%)" }}
     >
-      <AnimatePresence mode="wait">
-        {banner && (
-          <motion.div
-            key={banner.key}
-            data-testid="event-banner"
-            data-kind={banner.kind}
-            initial={{ opacity: 0, y: 12, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -12, scale: 0.95, transition: { duration: 0.2 } }}
-            transition={{ type: "spring", stiffness: 380, damping: 26 }}
-            className={`px-4 py-2 rounded-2xl shadow-xl text-sm tablet:text-base font-semibold text-center max-w-[92vw] border ${
-              banner.tone === "gold"
-                ? "bg-gold text-slate-900 border-amber-300"
-                : banner.tone === "poo"
-                  ? "bg-poo text-white border-poo-light"
-                  : "bg-slate-900/90 text-white border-white/10"
-            }`}
-          >
-            {banner.text}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div
+        className="font-display font-extrabold whitespace-nowrap"
+        style={{
+          fontSize: "clamp(46px,14cqw,84px)",
+          lineHeight: 0.9,
+          letterSpacing: "-.05em",
+          color: banner.color,
+          textShadow: "0 6px 0 rgba(0,0,0,.3), 0 20px 40px rgba(0,0,0,.4)",
+        }}
+      >
+        {banner.text}
+      </div>
+      {banner.sub && (
+        <div
+          className="mt-2 font-black text-cream whitespace-nowrap"
+          style={{ fontSize: "clamp(13px,3.6cqw,19px)", textShadow: "0 2px 0 rgba(0,0,0,.4)" }}
+        >
+          {banner.sub}
+        </div>
+      )}
     </div>
   );
 }
