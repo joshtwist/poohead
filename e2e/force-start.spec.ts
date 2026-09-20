@@ -3,6 +3,7 @@ import {
   closeAll,
   expectHandCount,
   setupPlayers,
+  slideReady,
   startGame,
   waitForPhase,
   waitForSwapping,
@@ -24,10 +25,10 @@ test("host force-starts around an offline player, who later resumes", async ({ b
     await carol.page.close();
     await expect(alice.page.getByTestId("opponent-Carol")).toHaveAttribute("data-connected", "false");
 
-    await alice.page.getByTestId("ready-btn").click();
+    await slideReady(alice.page);
     // Bob (connected) isn't ready yet → no force start
     await expect(alice.page.getByTestId("force-start-btn")).toBeDisabled();
-    await bob.page.getByTestId("ready-btn").click();
+    await slideReady(bob.page);
     await expect(alice.page.getByTestId("force-start-btn")).toBeEnabled();
     // Non-hosts never get the button
     await expect(bob.page.getByTestId("force-start-btn")).toHaveCount(0);

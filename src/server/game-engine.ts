@@ -414,6 +414,19 @@ export function setReady(
 }
 
 /**
+ * Take back "ready" while the table is still waiting on someone. Once the
+ * last player readies, play begins at once, so there is nothing to undo.
+ */
+export function setUnready(state: GameState, playerId: string): GameState {
+  if (state.phase !== "swapping") {
+    throw new Error("The game is not in the swapping phase");
+  }
+  assertPlayer(state, playerId);
+  if (!state.ready[playerId]) return state;
+  return { ...state, ready: { ...state.ready, [playerId]: false } };
+}
+
+/**
  * Host only: begin play once every CONNECTED player is ready. Players
  * who dropped during the swap are auto-readied with the cards they have.
  */

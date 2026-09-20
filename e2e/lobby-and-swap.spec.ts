@@ -10,6 +10,7 @@ import {
   handCard,
   key,
   setupPlayers,
+  slideReady,
   startGame,
   waitForPhase,
   waitForSwapping,
@@ -67,18 +68,38 @@ test("lobby, deal, swap and ready gating", async ({ browser }) => {
     // Everyone sees the new face-up card
     await expect(bob.page.getByTestId(`opp-faceup-Alice-${key("2h")}`)).toBeVisible();
 
-    // Ready gating: nothing starts until the last player is ready
+    // A stray tap on the knob must not ready you up — only a full slide does
     await alice.page.getByTestId("ready-btn").click();
-    await expect(alice.page.getByTestId("ready-btn")).toBeDisabled();
+    await expect(alice.page.getByTestId("ready-state")).toHaveCount(0);
+    await expect(carol.page.getByTestId("status-bar")).toContainText("0/3 ready");
+
+    // Ready gating: nothing starts until the last player is ready
+    await slideReady(alice.page);
+    await expect(alice.page.getByTestId("ready-state")).toContainText("1/3");
+    await expect(alice.page.getByTestId("ready-btn")).toHaveCount(0);
     await expect(carol.page.getByTestId("status-bar")).toContainText("1/3 ready");
     await expect(bob.page.getByTestId("opponent-Alice-ready")).toBeVisible();
-    await bob.page.getByTestId("ready-btn").click();
+
+    // Changed your mind? Undo while the others are still deciding…
+    await alice.page.getByTestId("unready-btn").click();
+    await expect(alice.page.getByTestId("ready-btn")).toBeVisible();
+    await expect(carol.page.getByTestId("status-bar")).toContainText("0/3 ready");
+    await expect(bob.page.getByTestId("opponent-Alice-ready")).toHaveCount(0);
+    // …swap some more…
+    await faceUpCard(alice.page, "9s").click();
+    await handCard(alice.page, "3d").click({ position: { x: 12, y: 24 } });
+    await expect(faceUpCard(alice.page, "3d")).toBeVisible();
+    await expect(handCard(alice.page, "9s")).toBeVisible();
+    // …and ready up again
+    await slideReady(alice.page);
+    await expect(carol.page.getByTestId("status-bar")).toContainText("1/3 ready");
+
+    await slideReady(bob.page);
     await expect(carol.page.getByTestId("status-bar")).toContainText("2/3 ready");
     await waitForPhase(carol.page, "swapping");
-    // Once ready you can't swap any more
-    await expect(alice.page.getByTestId("ready-btn")).toContainText("Ready · 2/3");
+    await expect(alice.page.getByTestId("ready-state")).toContainText("2/3");
 
-    await carol.page.getByTestId("ready-btn").click();
+    await slideReady(carol.page);
     for (const p of pages) await waitForPhase(p, "playing");
     await expectBanner(alice.page, "start");
 

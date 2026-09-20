@@ -157,10 +157,28 @@ export async function waitForSwapping(pages: Page[]): Promise<void> {
   for (const p of pages) await waitForPhase(p, "swapping");
 }
 
-/** Everyone taps Ready; resolves once every page is in the playing phase. */
+/**
+ * Ready up by dragging the knob to the far end of the "Slide to ready"
+ * track (a plain tap deliberately does nothing).
+ */
+export async function slideReady(page: Page): Promise<void> {
+  const knob = page.getByTestId("ready-btn");
+  const track = page.getByTestId("ready-track");
+  await expect(knob).toBeVisible();
+  const k = await knob.boundingBox();
+  const t = await track.boundingBox();
+  if (!k || !t) throw new Error("ready slider is not on screen");
+  const y = k.y + k.height / 2;
+  await page.mouse.move(k.x + k.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(t.x + t.width - k.width / 2, y, { steps: 12 });
+  await page.mouse.up();
+}
+
+/** Everyone slides to Ready; resolves once every page is in the playing phase. */
 export async function readyAll(pages: Page[]): Promise<void> {
   await waitForSwapping(pages);
-  for (const p of pages) await p.getByTestId("ready-btn").click();
+  for (const p of pages) await slideReady(p);
   for (const p of pages) await waitForPhase(p, "playing");
 }
 
